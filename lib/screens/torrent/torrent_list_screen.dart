@@ -217,79 +217,87 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isDark = themeNotifier.value;
     final displayList = _processTorrents();
-    return CupertinoPageScaffold(
-      backgroundColor: isDark ? kBgColorDark : kBgColorLight,
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
-        slivers: [
-          CupertinoSliverNavigationBar(
-            largeTitle: Text(
-              "我的下载",
-              style: TextStyle(color: isDark ? Colors.white : Colors.black),
+    
+    // 1. 使用 ValueListenableBuilder 监听主题变化
+    return ValueListenableBuilder<bool>(
+      valueListenable: themeNotifier,
+      builder: (context, isDark, child) {
+        return CupertinoPageScaffold(
+          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
             ),
-            backgroundColor: isDark ? kBgColorDark : kBgColorLight,
-            border: null,
-            leading: CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: _showFilterSheet,
-              child: const Icon(
-                CupertinoIcons.line_horizontal_3_decrease_circle,
-                size: 24,
+            slivers: [
+              CupertinoSliverNavigationBar(
+                largeTitle: Text(
+                  "我的下载",
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                ),
+                backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+                border: null,
+                leading: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: _showFilterSheet,
+                  child: const Icon(
+                    CupertinoIcons.line_horizontal_3_decrease_circle,
+                    size: 24,
+                  ),
+                ),
+                trailing: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  child: const Icon(CupertinoIcons.add_circled_solid, size: 28),
+                  onPressed: () => _showAddSheet(context),
+                ),
               ),
-            ),
-            trailing: CupertinoButton(
-              padding: EdgeInsets.zero,
-              child: const Icon(CupertinoIcons.add_circled_solid, size: 28),
-              onPressed: () => _showAddSheet(context),
-            ),
-          ),
-          CupertinoSliverRefreshControl(
-            onRefresh: () async {
-              await _fetchTorrents();
-              return Future.delayed(const Duration(milliseconds: 500));
-            },
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-            sliver: displayList.isEmpty
-                ? SliverToBoxAdapter(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 150),
-                        child: Column(
-                          children: [
-                            const Icon(
-                              CupertinoIcons.tray,
-                              size: 48,
-                              color: Colors.grey,
+              CupertinoSliverRefreshControl(
+                onRefresh: () async {
+                  await _fetchTorrents();
+                  return Future.delayed(const Duration(milliseconds: 500));
+                },
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                sliver: displayList.isEmpty
+                    ? SliverToBoxAdapter(
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 150),
+                            child: Column(
+                              children: [
+                                const Icon(
+                                  CupertinoIcons.tray,
+                                  size: 48,
+                                  color: Colors.grey,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _isLoggedIn ? "列表空空如也" : "正在连接服务器...",
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _isLoggedIn ? "列表空空如也" : "正在连接服务器...",
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                          ],
+                          ),
+                        ),
+                      )
+                    : SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          // 2. 将 isDark 传递给子组件
+                          (context, index) => _buildTorrentItem(displayList[index], isDark),
+                          childCount: displayList.length,
                         ),
                       ),
-                    ),
-                  )
-                : SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => _buildTorrentItem(displayList[index]),
-                      childCount: displayList.length,
-                    ),
-                  ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildTorrentItem(dynamic t) {
+  // 接收 isDark 参数
+  Widget _buildTorrentItem(dynamic t, bool isDark) {
     final hash = t['hash'] ?? '';
     final state = t['state'] ?? 'unknown';
 
@@ -424,7 +432,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   ),
                 ],
               ),
-              child: _buildTorrentCard(t),
+              child: _buildTorrentCard(t, isDark),
             ),
           ),
         ),
@@ -432,8 +440,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-  Widget _buildTorrentCard(dynamic t) {
-    bool isDark = themeNotifier.value;
+  // 接收 isDark 参数
+  Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
     final int dlSpeed = t['dlspeed'] ?? 0;
@@ -655,77 +663,87 @@ class _FilterSheetState extends State<FilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 600,
-      decoration: BoxDecoration(
-        color: themeNotifier.value ? kCardColorDark : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
-            ),
+    // 3. FilterSheet 也使用 ValueListenableBuilder 确保弹窗内颜色实时更新
+    return ValueListenableBuilder<bool>(
+      valueListenable: themeNotifier,
+      builder: (context, isDark, child) {
+        return Container(
+          height: 600,
+          decoration: BoxDecoration(
+            color: isDark ? kCardColorDark : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              "筛选与排序",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
-            ),
-          ),
-          CupertinoSegmentedControl<int>(
-            children: const {
-              0: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text("状态"),
-              ),
-              1: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text("分类"),
-              ),
-              2: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text("标签"),
-              ),
-              3: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text("排序"),
-              ),
-            },
-            onValueChanged: (v) => setState(() => _tabIndex = v),
-            groupValue: _tabIndex,
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CupertinoActivityIndicator())
-                : _buildList(),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: CupertinoButton.filled(
-                  child: const Text("应用"),
-                  onPressed: () =>
-                      widget.onApply(_status, _sort, _category, _tag),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  "筛选与排序",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold, 
+                    fontSize: 17,
+                    color: isDark ? Colors.white : Colors.black, // 适配文字颜色
+                  ),
+                ),
+              ),
+              CupertinoSegmentedControl<int>(
+                children: const {
+                  0: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text("状态"),
+                  ),
+                  1: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text("分类"),
+                  ),
+                  2: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text("标签"),
+                  ),
+                  3: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text("排序"),
+                  ),
+                },
+                onValueChanged: (v) => setState(() => _tabIndex = v),
+                groupValue: _tabIndex,
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CupertinoActivityIndicator())
+                    : _buildList(isDark), // 传递 isDark
+              ),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton.filled(
+                      child: const Text("应用"),
+                      onPressed: () =>
+                          widget.onApply(_status, _sort, _category, _tag),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildList() {
+  Widget _buildList(bool isDark) {
     switch (_tabIndex) {
       case 0:
         return ListView(
@@ -736,6 +754,7 @@ class _FilterSheetState extends State<FilterSheet> {
                   e.value,
                   _status == e.key,
                   (k) => setState(() => _status = k),
+                  isDark,
                 ),
               )
               .toList(),
@@ -749,6 +768,7 @@ class _FilterSheetState extends State<FilterSheet> {
                   e.value,
                   _category == e.key,
                   (k) => setState(() => _category = k),
+                  isDark,
                 ),
               )
               .toList(),
@@ -762,6 +782,7 @@ class _FilterSheetState extends State<FilterSheet> {
                   t == 'all' ? '全部标签' : t,
                   _tag == t,
                   (k) => setState(() => _tag = k),
+                  isDark,
                 ),
               )
               .toList(),
@@ -775,6 +796,7 @@ class _FilterSheetState extends State<FilterSheet> {
                   e.value,
                   _sort == e.key,
                   (k) => setState(() => _sort = k),
+                  isDark,
                 ),
               )
               .toList(),
@@ -789,6 +811,7 @@ class _FilterSheetState extends State<FilterSheet> {
     String label,
     bool selected,
     Function(String) onTap,
+    bool isDark,
   ) {
     return GestureDetector(
       onTap: () => onTap(key),
@@ -797,7 +820,7 @@ class _FilterSheetState extends State<FilterSheet> {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: themeNotifier.value ? Colors.white10 : Color(0xFFF2F2F7),
+              color: isDark ? Colors.white10 : const Color(0xFFF2F2F7),
             ),
           ),
         ),
@@ -815,7 +838,7 @@ class _FilterSheetState extends State<FilterSheet> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                color: themeNotifier.value ? Colors.white : Colors.black,
+                color: isDark ? Colors.white : Colors.black,
               ),
             ),
           ],

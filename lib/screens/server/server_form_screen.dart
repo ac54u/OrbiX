@@ -117,77 +117,106 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isDark = themeNotifier.value;
-    return CupertinoPageScaffold(
-      backgroundColor: isDark ? kBgColorDark : kBgColorLight,
-      navigationBar: CupertinoNavigationBar(
-        middle: Text(widget.editServer != null ? "编辑服务器" : "添加服务器"),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: _save,
-          child: const Text(
-            "保存",
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
-      child: ListView(
-        children: [
-          const SizedBox(height: 20),
-          CupertinoListSection.insetGrouped(
+    // 1. 使用 ValueListenableBuilder 监听主题
+    return ValueListenableBuilder<bool>(
+      valueListenable: themeNotifier,
+      builder: (context, isDark, child) {
+        return CupertinoPageScaffold(
+          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          navigationBar: CupertinoNavigationBar(
+            middle: Text(
+              widget.editServer != null ? "编辑服务器" : "添加服务器",
+              style: TextStyle(color: isDark ? Colors.white : Colors.black),
+            ),
             backgroundColor: isDark ? kBgColorDark : kBgColorLight,
-            header: const Text("服务器信息"),
-            children: [
-              _input("名称", _nameCtrl, "例如: Nas"),
-              _input("主机", _hostCtrl, "IP 或 域名"),
-              _input("端口", _portCtrl, "8080"),
-            ],
+            trailing: CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: _save,
+              child: const Text(
+                "保存",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
           ),
-          CupertinoListSection.insetGrouped(
-            backgroundColor: isDark ? kBgColorDark : kBgColorLight,
-            header: const Text("认证"),
+          child: ListView(
             children: [
-              _input("用户名", _userCtrl, "admin"),
-              _input("密码", _passCtrl, "必填", obscure: true),
-              CupertinoListTile(
-                title: const Text("使用 HTTPS"),
-                trailing: CupertinoSwitch(
-                  value: _useHttps,
-                  onChanged: (v) => setState(() => _useHttps = v),
+              const SizedBox(height: 20),
+              CupertinoListSection.insetGrouped(
+                backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+                decoration: BoxDecoration(
+                  color: isDark ? kCardColorDark : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                header: const Text("服务器信息"),
+                children: [
+                  _input("名称", _nameCtrl, "例如: Nas", isDark),
+                  _input("主机", _hostCtrl, "IP 或 域名", isDark),
+                  _input("端口", _portCtrl, "8080", isDark),
+                ],
+              ),
+              CupertinoListSection.insetGrouped(
+                backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+                decoration: BoxDecoration(
+                  color: isDark ? kCardColorDark : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                header: const Text("认证"),
+                children: [
+                  _input("用户名", _userCtrl, "admin", isDark),
+                  _input("密码", _passCtrl, "必填", isDark, obscure: true),
+                  CupertinoListTile(
+                    backgroundColor: isDark ? kCardColorDark : Colors.white,
+                    title: Text(
+                      "使用 HTTPS",
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    ),
+                    trailing: CupertinoSwitch(
+                      value: _useHttps,
+                      onChanged: (v) => setState(() => _useHttps = v),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: CupertinoButton(
+                  color: isDark ? kCardColorDark : Colors.white,
+                  onPressed: _testing ? null : _testConnection,
+                  child: _testing
+                      ? const CupertinoActivityIndicator()
+                      : Text(
+                          "测试连接",
+                          style: TextStyle(
+                            color: kPrimaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: CupertinoButton(
-              color: isDark ? Colors.grey[800] : Colors.white,
-              onPressed: _testing ? null : _testConnection,
-              child: _testing
-                  ? const CupertinoActivityIndicator()
-                  : Text(
-                      "测试连接",
-                      style: TextStyle(
-                        color: kPrimaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _input(
     String label,
     TextEditingController c,
-    String p, {
+    String p,
+    bool isDark, {
     bool obscure = false,
   }) {
     return CupertinoListTile(
-      title: SizedBox(width: 70, child: Text(label)),
+      backgroundColor: isDark ? kCardColorDark : Colors.white,
+      title: SizedBox(
+        width: 70, 
+        child: Text(
+          label,
+          style: TextStyle(color: isDark ? Colors.white : Colors.black),
+        ),
+      ),
       trailing: SizedBox(
         width: 180,
         child: CupertinoTextField(
@@ -197,8 +226,9 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
           textAlign: TextAlign.right,
           decoration: null,
           style: TextStyle(
-            color: themeNotifier.value ? Colors.white : Colors.black,
+            color: isDark ? Colors.white : Colors.black,
           ),
+          placeholderStyle: const TextStyle(color: Colors.grey),
         ),
       ),
     );

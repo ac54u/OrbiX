@@ -59,138 +59,146 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPageScaffold(
-      backgroundColor: themeNotifier.value ? kBgColorDark : kBgColorLight,
-      navigationBar: CupertinoNavigationBar(
-        middle: const Text("服务器管理"),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          child: const Icon(CupertinoIcons.add),
-          onPressed: () => Navigator.push(
-            context,
-            CupertinoPageRoute(builder: (_) => const ServerFormScreen()),
-          ).then((_) => _loadServers()),
-        ),
-      ),
-      child: SafeArea(
-        child: ListView.builder(
-          padding: const EdgeInsets.only(top: 20, bottom: 40),
-          itemCount: _servers.length,
-          itemBuilder: (context, index) {
-            final s = _servers[index];
-            final bool isActive = index == _currentIndex;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Slidable(
-                  key: ValueKey(index),
-                  endActionPane: ActionPane(
-                    motion: const ScrollMotion(),
-                    extentRatio: 0.4,
-                    children: [
-                      SlidableAction(
-                        onPressed: (ctx) {
-                          Navigator.push(
-                            context,
-                            CupertinoPageRoute(
-                              builder: (_) => ServerFormScreen(
-                                editServer: s,
-                                editIndex: index,
-                              ),
-                            ),
-                          ).then((_) => _loadServers());
-                        },
-                        backgroundColor: const Color(0xFFFF9500),
-                        foregroundColor: Colors.white,
-                        icon: CupertinoIcons.pencil,
-                        label: '编辑',
-                      ),
-                      SlidableAction(
-                        onPressed: (ctx) => _deleteServer(index),
-                        backgroundColor: const Color(0xFFFF3B30),
-                        foregroundColor: Colors.white,
-                        icon: CupertinoIcons.delete,
-                        label: '删除',
-                      ),
-                    ],
-                  ),
-                  child: GestureDetector(
-                    onTap: () => _selectServer(index),
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: themeNotifier.value
-                            ? kCardColorDark
-                            : Colors.white,
-                        border: isActive
-                            ? Border.all(color: kPrimaryColor, width: 2)
-                            : Border.all(color: Colors.transparent, width: 2),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: kMinimalShadow,
-                      ),
-                      child: Row(
+    // 1. 监听主题变化
+    return ValueListenableBuilder<bool>(
+      valueListenable: themeNotifier,
+      builder: (context, isDark, child) {
+        return CupertinoPageScaffold(
+          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          navigationBar: CupertinoNavigationBar(
+            middle: Text(
+              "服务器管理",
+              style: TextStyle(color: isDark ? Colors.white : Colors.black),
+            ),
+            backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+            trailing: CupertinoButton(
+              padding: EdgeInsets.zero,
+              child: const Icon(CupertinoIcons.add),
+              onPressed: () => Navigator.push(
+                context,
+                CupertinoPageRoute(builder: (_) => const ServerFormScreen()),
+              ).then((_) => _loadServers()),
+            ),
+          ),
+          child: SafeArea(
+            child: ListView.builder(
+              padding: const EdgeInsets.only(top: 20, bottom: 40),
+              itemCount: _servers.length,
+              itemBuilder: (context, index) {
+                final s = _servers[index];
+                final bool isActive = index == _currentIndex;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Slidable(
+                      key: ValueKey(index),
+                      endActionPane: ActionPane(
+                        motion: const ScrollMotion(),
+                        extentRatio: 0.4,
                         children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: isActive
-                                  ? const Color(0xFF34C759)
-                                  : Colors.grey[300],
-                              shape: BoxShape.circle,
-                            ),
+                          SlidableAction(
+                            onPressed: (ctx) {
+                              Navigator.push(
+                                context,
+                                CupertinoPageRoute(
+                                  builder: (_) => ServerFormScreen(
+                                    editServer: s,
+                                    editIndex: index,
+                                  ),
+                                ),
+                              ).then((_) => _loadServers());
+                            },
+                            backgroundColor: const Color(0xFFFF9500),
+                            foregroundColor: Colors.white,
+                            icon: CupertinoIcons.pencil,
+                            label: '编辑',
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  s['name'],
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: themeNotifier.value
-                                        ? Colors.white
-                                        : Colors.black,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  "${s['https'] == true ? 'https' : 'http'}://${s['host']}:${s['port']}",
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 14,
-                                    fontFamily: 'Courier',
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  "用户: ${s['user']}",
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
+                          SlidableAction(
+                            onPressed: (ctx) => _deleteServer(index),
+                            backgroundColor: const Color(0xFFFF3B30),
+                            foregroundColor: Colors.white,
+                            icon: CupertinoIcons.delete,
+                            label: '删除',
                           ),
-                          if (isActive)
-                            const Icon(
-                              CupertinoIcons.checkmark_alt,
-                              color: kPrimaryColor,
-                            ),
                         ],
+                      ),
+                      child: GestureDetector(
+                        onTap: () => _selectServer(index),
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            // 2. 动态设置卡片颜色
+                            color: isDark ? kCardColorDark : Colors.white,
+                            border: isActive
+                                ? Border.all(color: kPrimaryColor, width: 2)
+                                : Border.all(color: Colors.transparent, width: 2),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: kMinimalShadow,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: isActive
+                                      ? const Color(0xFF34C759)
+                                      : Colors.grey[300],
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      s['name'],
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                        // 3. 动态设置文字颜色
+                                        color: isDark ? Colors.white : Colors.black,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      "${s['https'] == true ? 'https' : 'http'}://${s['host']}:${s['port']}",
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 14,
+                                        fontFamily: 'Courier',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "用户: ${s['user']}",
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (isActive)
+                                const Icon(
+                                  CupertinoIcons.checkmark_alt,
+                                  color: kPrimaryColor,
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }

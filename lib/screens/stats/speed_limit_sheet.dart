@@ -64,34 +64,44 @@ class _SpeedLimitSheetState extends State<SpeedLimitSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 400,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: themeNotifier.value ? kBgColorDark : kBgColorLight,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            "全局速度限制",
-            style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold),
+    // 1. 监听主题变化
+    return ValueListenableBuilder<bool>(
+      valueListenable: themeNotifier,
+      builder: (context, isDark, child) {
+        return Container(
+          height: 400,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: isDark ? kBgColorDark : kBgColorLight,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
-          const SizedBox(height: 30),
-          _buildRow("下载限制", _dlCtrl, _dlUnit, (v) => setState(() => _dlUnit = v)),
-          const SizedBox(height: 20),
-          _buildRow("上传限制", _upCtrl, _upUnit, (v) => setState(() => _upUnit = v)),
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: CupertinoButton.filled(
-              onPressed: _save,
-              child: const Text("保存"),
-            ),
+          child: Column(
+            children: [
+              Text(
+                "全局速度限制",
+                style: GoogleFonts.outfit(
+                  fontSize: 20, 
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black, // 适配颜色
+                ),
+              ),
+              const SizedBox(height: 30),
+              _buildRow("下载限制", _dlCtrl, _dlUnit, (v) => setState(() => _dlUnit = v), isDark),
+              const SizedBox(height: 20),
+              _buildRow("上传限制", _upCtrl, _upUnit, (v) => setState(() => _upUnit = v), isDark),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton.filled(
+                  onPressed: _save,
+                  child: const Text("保存"),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
           ),
-          const SizedBox(height: 20),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -100,22 +110,35 @@ class _SpeedLimitSheetState extends State<SpeedLimitSheet> {
     TextEditingController ctrl,
     int unit,
     Function(int) onUnitChange,
+    bool isDark,
   ) {
     return Row(
       children: [
-        SizedBox(width: 80, child: Text(label)),
+        SizedBox(
+          width: 80, 
+          child: Text(
+            label,
+            style: TextStyle(color: isDark ? Colors.white : Colors.black),
+          ),
+        ),
         Expanded(
           child: CupertinoTextField(
             controller: ctrl,
             placeholder: "0 (无限制)",
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: TextStyle(color: isDark ? Colors.white : Colors.black), // 输入框文字适配
           ),
         ),
         const SizedBox(width: 10),
         CupertinoSlidingSegmentedControl<int>(
-          children: const {0: Text("KB/s"), 1: Text("MB/s")},
+          children: {
+            0: Text("KB/s", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+            1: Text("MB/s", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+          },
           groupValue: unit,
           onValueChanged: (v) => onUnitChange(v!),
+          backgroundColor: isDark ? Colors.grey[800]! : CupertinoColors.tertiarySystemFill,
+          thumbColor: isDark ? Colors.grey[600]! : Colors.white,
         ),
       ],
     );

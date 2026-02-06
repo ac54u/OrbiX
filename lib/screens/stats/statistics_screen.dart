@@ -79,8 +79,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   List<Map<String, dynamic>> _calculateMilestones(Map<String, dynamic> data) {
     final serverState = data['server_state'] ?? {};
-    final totalDl = serverState['alltime_dl'] ?? 0; // Bytes
-    final totalUp = serverState['alltime_ul'] ?? 0; // Bytes
+    final totalDl = serverState['alltime_dl'] ?? 0; 
+    final totalUp = serverState['alltime_ul'] ?? 0; 
     
     final dlGb = totalDl / 1024 / 1024 / 1024;
     
@@ -116,8 +116,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     ];
   }
 
-  Widget _buildMilestoneList() {
+  // 修改点：传入 isDark 参数
+  Widget _buildMilestoneList(bool isDark) {
     final milestones = _calculateMilestones(_serverData);
+
     return SizedBox(
       height: 110,
       child: ListView.builder(
@@ -134,7 +136,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             decoration: BoxDecoration(
               color: achieved 
                   ? (m['color'] as Color).withOpacity(0.1) 
-                  : (themeNotifier.value ? Colors.white10 : Colors.grey[200]),
+                  : (isDark ? Colors.white10 : Colors.grey[200]),
               borderRadius: BorderRadius.circular(16),
               border: achieved ? Border.all(color: (m['color'] as Color).withOpacity(0.5)) : null,
             ),
@@ -153,7 +155,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
-                    color: achieved ? (themeNotifier.value ? Colors.white : Colors.black) : Colors.grey,
+                    color: achieved ? (isDark ? Colors.white : Colors.black) : Colors.grey,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -176,10 +178,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final serverState = _serverData['server_state'] ?? {};
     final dlSession = Utils.formatBytes(serverState['dl_info_data'] ?? 0);
     final upSession = Utils.formatBytes(serverState['up_info_data'] ?? 0);
-    final dlSpeedStr =
-        "${Utils.formatBytes(serverState['dl_info_speed'] ?? 0)}/s";
-    final upSpeedStr =
-        "${Utils.formatBytes(serverState['up_info_speed'] ?? 0)}/s";
+    final dlSpeedStr = "${Utils.formatBytes(serverState['dl_info_speed'] ?? 0)}/s";
+    final upSpeedStr = "${Utils.formatBytes(serverState['up_info_speed'] ?? 0)}/s";
     final freeSpace = Utils.formatBytes(serverState['free_space_on_disk'] ?? 0);
     final totalDl = Utils.formatBytes(serverState['alltime_dl'] ?? 0);
     final totalUp = Utils.formatBytes(serverState['alltime_ul'] ?? 0);
@@ -188,138 +188,127 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         ? ratioRaw.toStringAsFixed(2)
         : (ratioRaw ?? "0.00");
 
-    bool isDark = themeNotifier.value;
-
-    return CupertinoPageScaffold(
-      backgroundColor: kBgColor,
-      navigationBar: CupertinoNavigationBar(
-        middle: const Text("统计"),
-        backgroundColor: kBgColor,
-        border: null,
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: _showLimitSheet,
-          child: const Icon(CupertinoIcons.thermometer, size: 24),
-        ),
-      ),
-      child: CustomScrollView(
-        slivers: [
-          CupertinoSliverRefreshControl(
-            onRefresh: () async {
-              await _fetch();
-              return Future.delayed(const Duration(milliseconds: 500));
-            },
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 0, 10),
-                  child: Text(
-                    "成就里程碑", 
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold, 
-                      fontSize: 20,
-                      color: isDark ? Colors.white : Colors.black,
-                    )
-                  ),
-                ),
-                _buildMilestoneList(),
-                const SizedBox(height: 20),
-
-                _buildInfoCard(
-                  title: "服务器",
-                  rows: [
-                    _buildInfoRow("qBittorrent 版本", _appVersion, bold: true),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildInfoCard(
-                  title: "历史统计",
-                  rows: [
-                    _buildIconRow(
-                      CupertinoIcons.tray_arrow_down_fill,
-                      kPrimaryColor,
-                      "总下载量",
-                      totalDl,
-                    ),
-                    _buildIconRow(
-                      CupertinoIcons.tray_arrow_up_fill,
-                      const Color(0xFF34C759),
-                      "总上传量",
-                      totalUp,
-                    ),
-                    _buildIconRow(
-                      CupertinoIcons.graph_circle_fill,
-                      const Color(0xFFFF9500),
-                      "分享率",
-                      ratio.toString(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Padding(
-                  padding: EdgeInsets.only(left: 16, bottom: 8),
-                  child: Text(
-                    "当前会话",
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                _buildChartCard(
-                  title: "下载",
-                  sessionLabel: "本次下载",
-                  sessionValue: dlSession,
-                  speedLabel: "下载速率",
-                  speedValue: dlSpeedStr,
-                  color: kPrimaryColor,
-                  spots: _dlSpots,
-                ),
-                const SizedBox(height: 12),
-                _buildChartCard(
-                  title: "上传",
-                  sessionLabel: "本次上传",
-                  sessionValue: upSession,
-                  speedLabel: "上传速率",
-                  speedValue: upSpeedStr,
-                  color: const Color(0xFF34C759),
-                  spots: _upSpots,
-                ),
-                const SizedBox(height: 16),
-                _buildInfoCard(
-                  title: "硬盘",
-                  rows: [_buildInfoRow("剩余空间", freeSpace, bold: true)],
-                ),
-                const SizedBox(height: 120),
-              ]),
+    // 修改点：使用 ValueListenableBuilder 包裹 Scaffold
+    return ValueListenableBuilder<bool>(
+      valueListenable: themeNotifier,
+      builder: (context, isDark, child) {
+        return CupertinoPageScaffold(
+          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          navigationBar: CupertinoNavigationBar(
+            middle: Text("统计", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+            backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+            border: null,
+            trailing: CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: _showLimitSheet,
+              child: const Icon(CupertinoIcons.thermometer, size: 24),
             ),
           ),
-        ],
-      ),
+          child: CustomScrollView(
+            slivers: [
+              CupertinoSliverRefreshControl(
+                onRefresh: () async {
+                  await _fetch();
+                  return Future.delayed(const Duration(milliseconds: 500));
+                },
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 0, 10),
+                      child: Text(
+                        "成就里程碑", 
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 20,
+                          color: isDark ? Colors.white : Colors.black,
+                        )
+                      ),
+                    ),
+                    _buildMilestoneList(isDark), // 传入 isDark
+                    const SizedBox(height: 20),
+
+                    _buildInfoCard(
+                      isDark: isDark,
+                      title: "服务器",
+                      rows: [
+                        _buildInfoRow("qBittorrent 版本", _appVersion, isDark, bold: true),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildInfoCard(
+                      isDark: isDark,
+                      title: "历史统计",
+                      rows: [
+                        _buildIconRow(CupertinoIcons.tray_arrow_down_fill, kPrimaryColor, "总下载量", totalDl, isDark),
+                        _buildIconRow(CupertinoIcons.tray_arrow_up_fill, const Color(0xFF34C759), "总上传量", totalUp, isDark),
+                        _buildIconRow(CupertinoIcons.graph_circle_fill, const Color(0xFFFF9500), "分享率", ratio.toString(), isDark),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, bottom: 8),
+                      child: Text(
+                        "当前会话",
+                        style: TextStyle(
+                          color: isDark ? Colors.white54 : Colors.grey,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    _buildChartCard(
+                      isDark: isDark,
+                      title: "下载",
+                      sessionLabel: "本次下载",
+                      sessionValue: dlSession,
+                      speedLabel: "下载速率",
+                      speedValue: dlSpeedStr,
+                      color: kPrimaryColor,
+                      spots: _dlSpots,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildChartCard(
+                      isDark: isDark,
+                      title: "上传",
+                      sessionLabel: "本次上传",
+                      sessionValue: upSession,
+                      speedLabel: "上传速率",
+                      speedValue: upSpeedStr,
+                      color: const Color(0xFF34C759),
+                      spots: _upSpots,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildInfoCard(
+                      isDark: isDark,
+                      title: "硬盘",
+                      rows: [_buildInfoRow("剩余空间", freeSpace, isDark, bold: true)],
+                    ),
+                    const SizedBox(height: 120),
+                  ]),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildIconRow(
-    IconData icon,
-    Color iconColor,
-    String label,
-    String value,
-  ) {
+  Widget _buildIconRow(IconData icon, Color iconColor, String label, String value, bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
           Icon(icon, size: 18, color: iconColor),
           const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontSize: 15)),
+          Text(label, style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black)),
           const Spacer(),
           Text(
             value,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black),
           ),
         ],
       ),
@@ -327,6 +316,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   Widget _buildChartCard({
+    required bool isDark,
     required String title,
     required String sessionLabel,
     required String sessionValue,
@@ -339,9 +329,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? kCardColorDark : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: kMinimalShadow,
+        boxShadow: isDark ? [] : kMinimalShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,18 +342,17 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               Row(
                 children: [
                   Icon(
-                    title == "下载"
-                        ? CupertinoIcons.arrow_down_circle_fill
-                        : CupertinoIcons.arrow_up_circle_fill,
+                    title == "下载" ? CupertinoIcons.arrow_down_circle_fill : CupertinoIcons.arrow_up_circle_fill,
                     color: color,
                     size: 20,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     speedLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black,
                     ),
                   ),
                 ],
@@ -384,7 +373,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               ),
               Text(
                 sessionValue,
-                style: const TextStyle(fontSize: 13, color: Colors.black),
+                style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black),
               ),
             ],
           ),
@@ -418,14 +407,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildInfoCard({required String title, required List<Widget> rows}) {
+  Widget _buildInfoCard({required bool isDark, required String title, required List<Widget> rows}) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? kCardColorDark : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: kMinimalShadow,
+        boxShadow: isDark ? [] : kMinimalShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -447,19 +436,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, {bool bold = false}) {
+  Widget _buildInfoRow(String label, String value, bool isDark, {bool bold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 15)),
+          Text(label, style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black)),
           Text(
             value,
             style: TextStyle(
               fontSize: 15,
               fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-              color: Colors.black,
+              color: isDark ? Colors.white : Colors.black,
             ),
           ),
         ],

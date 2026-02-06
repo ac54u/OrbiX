@@ -48,59 +48,72 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final t = widget.torrent;
-    return CupertinoPageScaffold(
-      backgroundColor: themeNotifier.value ? kBgColorDark : kBgColorLight,
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text("详情"),
-        previousPageTitle: "我的下载",
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 100),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SizedBox(
-              width: double.infinity,
-              child: CupertinoSegmentedControl<int>(
-                children: const {
-                  0: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: Text("概览"),
-                  ),
-                  1: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: Text("连接"),
-                  ),
-                  2: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: Text("文件"),
-                  ),
-                },
-                onValueChanged: (v) {
-                  setState(() {
-                    _segIndex = v;
-                    _loading = true;
-                  });
-                  _refreshData();
-                },
-                groupValue: _segIndex,
-              ),
+    // 1. 监听主题变化
+    return ValueListenableBuilder<bool>(
+      valueListenable: themeNotifier,
+      builder: (context, isDark, child) {
+        return CupertinoPageScaffold(
+          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          navigationBar: CupertinoNavigationBar(
+            middle: Text(
+              "详情",
+              style: TextStyle(color: isDark ? Colors.white : Colors.black),
             ),
+            previousPageTitle: "我的下载",
+            backgroundColor: isDark ? kBgColorDark : kBgColorLight,
           ),
-          const SizedBox(height: 10),
-          Expanded(child: _buildContent(t)),
-        ],
-      ),
+          child: Column(
+            children: [
+              const SizedBox(height: 100),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: CupertinoSegmentedControl<int>(
+                    children: {
+                      0: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text("概览", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                      ),
+                      1: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text("连接", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                      ),
+                      2: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text("文件", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                      ),
+                    },
+                    onValueChanged: (v) {
+                      setState(() {
+                        _segIndex = v;
+                        _loading = true;
+                      });
+                      _refreshData();
+                    },
+                    groupValue: _segIndex,
+                    borderColor: isDark ? Colors.white54 : kPrimaryColor,
+                    selectedColor: kPrimaryColor,
+                    pressedColor: kPrimaryColor.withOpacity(0.2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(child: _buildContent(t, isDark)), // 传递 isDark
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildContent(dynamic t) {
-    if (_segIndex == 0) return _buildInfoView(t);
-    if (_segIndex == 1) return _buildPeersView();
-    return _buildFilesView();
+  Widget _buildContent(dynamic t, bool isDark) {
+    if (_segIndex == 0) return _buildInfoView(t, isDark);
+    if (_segIndex == 1) return _buildPeersView(isDark);
+    return _buildFilesView(isDark);
   }
 
-  Widget _buildInfoView(dynamic t) {
+  Widget _buildInfoView(dynamic t, bool isDark) {
     final addedDate = DateTime.fromMillisecondsSinceEpoch(
       (t['added_on'] ?? 0) * 1000,
     );
@@ -108,41 +121,50 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       padding: EdgeInsets.zero,
       children: [
         CupertinoListSection.insetGrouped(
-          backgroundColor: themeNotifier.value ? kBgColorDark : kBgColorLight,
-          header: const Text("基本信息"),
+          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          decoration: BoxDecoration(
+            color: isDark ? kCardColorDark : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          header: Text("基本信息", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey)),
           children: [
-            _row("名称", t['name'] ?? '', bold: true),
-            _row("大小", Utils.formatBytes(t['size'] ?? 0)),
-            _row("进度", "${((t['progress'] ?? 0) * 100).toStringAsFixed(1)}%"),
-            _row("状态", t['state'] ?? ''),
+            _row("名称", t['name'] ?? '', isDark, bold: true),
+            _row("大小", Utils.formatBytes(t['size'] ?? 0), isDark),
+            _row("进度", "${((t['progress'] ?? 0) * 100).toStringAsFixed(1)}%", isDark),
+            _row("状态", t['state'] ?? '', isDark),
             _row(
               "添加时间",
               "${addedDate.year}-${addedDate.month}-${addedDate.day} ${addedDate.hour}:${addedDate.minute}",
+              isDark,
             ),
-            _row("保存路径", t['save_path'] ?? '', small: true),
-            _row("分类", t['category'] ?? '无', small: true),
-            _row("标签", t['tags'] ?? '', small: true),
+            _row("保存路径", t['save_path'] ?? '', isDark, small: true),
+            _row("分类", t['category'] ?? '无', isDark, small: true),
+            _row("标签", t['tags'] ?? '', isDark, small: true),
           ],
         ),
         CupertinoListSection.insetGrouped(
-          backgroundColor: themeNotifier.value ? kBgColorDark : kBgColorLight,
-          header: const Text("传输数据"),
+          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          decoration: BoxDecoration(
+            color: isDark ? kCardColorDark : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          header: Text("传输数据", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey)),
           children: [
-            _row("下载速度", "${Utils.formatBytes(t['dlspeed'] ?? 0)}/s"),
-            _row("上传速度", "${Utils.formatBytes(t['upspeed'] ?? 0)}/s"),
-            _row("已下载", Utils.formatBytes(t['downloaded'] ?? 0)),
-            _row("已上传", Utils.formatBytes(t['uploaded'] ?? 0)),
-            _row("分享率", (t['ratio'] ?? 0).toStringAsFixed(2)),
+            _row("下载速度", "${Utils.formatBytes(t['dlspeed'] ?? 0)}/s", isDark),
+            _row("上传速度", "${Utils.formatBytes(t['upspeed'] ?? 0)}/s", isDark),
+            _row("已下载", Utils.formatBytes(t['downloaded'] ?? 0), isDark),
+            _row("已上传", Utils.formatBytes(t['uploaded'] ?? 0), isDark),
+            _row("分享率", (t['ratio'] ?? 0).toStringAsFixed(2), isDark),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildPeersView() {
+  Widget _buildPeersView(bool isDark) {
     if (_peers.isEmpty) {
-      return const Center(
-        child: Text("暂无连接", style: TextStyle(color: Colors.grey)),
+      return Center(
+        child: Text("暂无连接", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey)),
       );
     }
 
@@ -154,7 +176,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
         final p = list[index];
         final ip = p['ip'] ?? '?.?.?.?';
         return Container(
-          color: themeNotifier.value ? kCardColorDark : Colors.white,
+          color: isDark ? kCardColorDark : Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
             children: [
@@ -166,7 +188,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      color: themeNotifier.value ? Colors.white : Colors.black,
+                      color: isDark ? Colors.white : Colors.black,
                     ),
                   ),
                   Text(
@@ -182,7 +204,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
     );
   }
 
-  Widget _buildFilesView() {
+  Widget _buildFilesView(bool isDark) {
     return ListView.builder(
       padding: EdgeInsets.zero,
       itemCount: _files.length,
@@ -191,7 +213,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
         final progress = (f['progress'] ?? 0.0).toDouble();
 
         return Container(
-          color: themeNotifier.value ? kCardColorDark : Colors.white,
+          color: isDark ? kCardColorDark : Colors.white,
           padding: const EdgeInsets.all(16),
           margin: const EdgeInsets.only(bottom: 1),
           child: Column(
@@ -201,14 +223,14 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 f['name'],
                 style: TextStyle(
                   fontSize: 14,
-                  color: themeNotifier.value ? Colors.white : Colors.black,
+                  color: isDark ? Colors.white : Colors.black,
                 ),
               ),
               const SizedBox(height: 8),
               LinearProgressIndicator(
                 value: progress,
                 minHeight: 2,
-                backgroundColor: const Color(0xFFF2F2F7),
+                backgroundColor: isDark ? Colors.white10 : const Color(0xFFF2F2F7),
                 color: kPrimaryColor,
               ),
             ],
@@ -220,11 +242,13 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
 
   Widget _row(
     String label,
-    String value, {
+    String value,
+    bool isDark, {
     bool bold = false,
     bool small = false,
   }) {
     return CupertinoListTile(
+      backgroundColor: isDark ? kCardColorDark : Colors.white,
       title: Text(
         label,
         style: const TextStyle(fontSize: 14, color: Colors.grey),
@@ -235,7 +259,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           value,
           textAlign: TextAlign.right,
           style: TextStyle(
-            color: themeNotifier.value ? Colors.white : Colors.black,
+            color: isDark ? Colors.white : Colors.black,
             fontSize: small ? 12 : 14,
             fontWeight: bold ? FontWeight.bold : FontWeight.normal,
           ),
