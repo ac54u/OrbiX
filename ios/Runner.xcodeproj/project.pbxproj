@@ -14,8 +14,11 @@
 		044BB65D2F6F2B6600A21F85 /* OrbixWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 044BB65C2F6F2B6600A21F85 /* OrbixWidget.swift */; };
 		044BB65F2F6F2B6800A21F85 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 044BB65E2F6F2B6800A21F85 /* Assets.xcassets */; };
 		044BB6632F6F2B6800A21F85 /* OrbixWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 044BB6512F6F2B6600A21F85 /* OrbixWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+<<<<<<< HEAD
 		04A798DC2F6F3226008B9F5C /* LiveActivityData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A798DB2F6F3226008B9F5C /* LiveActivityData.swift */; };
 		04A798DD2F6F3226008B9F5C /* LiveActivityData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A798DB2F6F3226008B9F5C /* LiveActivityData.swift */; };
+=======
+>>>>>>> 84fafee58859069611a393fd4672262caf5aab02
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -75,7 +78,10 @@
 		044BB65C2F6F2B6600A21F85 /* OrbixWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbixWidget.swift; sourceTree = "<group>"; };
 		044BB65E2F6F2B6800A21F85 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		044BB6602F6F2B6800A21F85 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+<<<<<<< HEAD
 		04A798DB2F6F3226008B9F5C /* LiveActivityData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityData.swift; sourceTree = "<group>"; };
+=======
+>>>>>>> 84fafee58859069611a393fd4672262caf5aab02
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -130,7 +136,10 @@
 				044BB65C2F6F2B6600A21F85 /* OrbixWidget.swift */,
 				044BB65E2F6F2B6800A21F85 /* Assets.xcassets */,
 				044BB6602F6F2B6800A21F85 /* Info.plist */,
+<<<<<<< HEAD
 				04A798DB2F6F3226008B9F5C /* LiveActivityData.swift */,
+=======
+>>>>>>> 84fafee58859069611a393fd4672262caf5aab02
 			);
 			path = OrbixWidget;
 			sourceTree = "<group>";
@@ -362,7 +371,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+<<<<<<< HEAD
 				04A798DD2F6F3226008B9F5C /* LiveActivityData.swift in Sources */,
+=======
+>>>>>>> 84fafee58859069611a393fd4672262caf5aab02
 				044BB65D2F6F2B6600A21F85 /* OrbixWidget.swift in Sources */,
 				044BB6592F6F2B6600A21F85 /* OrbixWidgetBundle.swift in Sources */,
 				044BB65B2F6F2B6600A21F85 /* OrbixWidgetLiveActivity.swift in Sources */,
