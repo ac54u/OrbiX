@@ -35,6 +35,8 @@ struct OrbixWidgetLiveActivity: Widget {
                     Text(context.state.sizeInfo) // 🚀 显示容量信息
                         .font(.caption2)
                         .foregroundColor(.secondary)
+                        .lineLimit(1) // 防止长文本换行
+                        .minimumScaleFactor(0.8)
                     Spacer()
                     Text("\(Int(context.state.progress * 100))%")
                         .font(.caption2)
@@ -65,18 +67,23 @@ struct OrbixWidgetLiveActivity: Widget {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.green)
+                        .lineLimit(1) // 🚀 限制绝对只有 1 行，防止排版被顶成竖向
+                        .minimumScaleFactor(0.5) // 🚀 如果字太宽，允许缩小到 50% 字号
                         .contentTransition(.numericText()) // 🚀 动画
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 4) {
                         HStack {
-                            Text(context.state.sizeInfo) // 🚀 左下角显示容量
+                            Text(context.state.sizeInfo) // 🚀 左下角显示容量或长提示语
                                 .font(.caption)
                                 .foregroundColor(.gray)
+                                .lineLimit(1) // 🚀 防挤压换行
+                                .minimumScaleFactor(0.7)
                             Spacer()
                             Text(context.state.eta)
                                 .font(.caption)
                                 .foregroundColor(.gray)
+                                .lineLimit(1) // 🚀 防挤压换行
                                 .contentTransition(.numericText())
                         }
                         ProgressView(value: context.state.progress)
