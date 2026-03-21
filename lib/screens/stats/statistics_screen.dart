@@ -23,6 +23,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   final int _maxPoints = 30;
   Timer? _timer;
 
+  // 新增：服务器状态与延迟记录
+  bool _isOnline = false;
+  int _pingMs = 0;
+
+  // 新增：记录本次会话的峰值速度 (KB/s)
+  double _peakDlSpeed = 0;
+  double _peakUpSpeed = 0;
+
   @override
   void initState() {
     super.initState();
@@ -42,24 +50,40 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   Future<void> _fetch() async {
+    // 启动计时器测量 Ping 延迟
+    final stopwatch = Stopwatch()..start();
     final data = await ApiService.getMainData();
+    stopwatch.stop();
+
     if (_appVersion == "Unknown") {
       final v = await ApiService.getAppVersion();
       if (v != null) setState(() => _appVersion = v);
     }
 
-    if (data != null && mounted) {
+    if (mounted) {
       setState(() {
-        _serverData = data;
-        final serverState = data['server_state'] ?? {};
-        final double dlSpeed = (serverState['dl_info_speed'] ?? 0) / 1024.0;
-        final double upSpeed = (serverState['up_info_speed'] ?? 0) / 1024.0;
+        if (data != null) {
+          _isOnline = true;
+          _pingMs = stopwatch.elapsedMilliseconds;
+          _serverData = data;
+          
+          final serverState = data['server_state'] ?? {};
+          final double dlSpeed = (serverState['dl_info_speed'] ?? 0) / 1024.0;
+          final double upSpeed = (serverState['up_info_speed'] ?? 0) / 1024.0;
 
-        _timeCounter++;
-        _dlSpots.removeAt(0);
-        _dlSpots.add(FlSpot(_timeCounter, dlSpeed));
-        _upSpots.removeAt(0);
-        _upSpots.add(FlSpot(_timeCounter, upSpeed));
+          // 更新峰值速度
+          if (dlSpeed > _peakDlSpeed) _peakDlSpeed = dlSpeed;
+          if (upSpeed > _peakUpSpeed) _peakUpSpeed = upSpeed;
+
+          _timeCounter++;
+          _dlSpots.removeAt(0);
+          _dlSpots.add(FlSpot(_timeCounter, dlSpeed));
+          _upSpots.removeAt(0);
+          _upSpots.add(FlSpot(_timeCounter, upSpeed));
+        } else {
+          // 获取失败时标记为离线
+          _isOnline = false;
+        }
       });
     }
   }
@@ -77,102 +101,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  List<Map<String, dynamic>> _calculateMilestones(Map<String, dynamic> data) {
-    final serverState = data['server_state'] ?? {};
-    final totalDl = serverState['alltime_dl'] ?? 0; 
-    final totalUp = serverState['alltime_ul'] ?? 0; 
-    
-    final dlGb = totalDl / 1024 / 1024 / 1024;
-    
-    return [
-      {
-        'icon': CupertinoIcons.tray_arrow_down,
-        'color': Colors.blue,
-        'title': '下载新手',
-        'desc': '累计下载 10GB',
-        'achieved': dlGb >= 10,
-      },
-      {
-        'icon': CupertinoIcons.layers_alt_fill,
-        'color': Colors.purple,
-        'title': '数据收藏家',
-        'desc': '累计下载 1TB',
-        'achieved': dlGb >= 1024,
-      },
-      {
-        'icon': CupertinoIcons.share_solid,
-        'color': Colors.green,
-        'title': '无私奉献',
-        'desc': '累计上传 > 100GB',
-        'achieved': (totalUp / 1024 / 1024 / 1024) >= 100,
-      },
-      {
-        'icon': CupertinoIcons.bolt_horizontal_fill,
-        'color': Colors.orange,
-        'title': '极速狂飙',
-        'desc': '速度破 50MB/s',
-        'achieved': (serverState['dl_info_speed'] ?? 0) > 50 * 1024 * 1024,
-      },
-    ];
-  }
-
-  // 修改点：传入 isDark 参数
-  Widget _buildMilestoneList(bool isDark) {
-    final milestones = _calculateMilestones(_serverData);
-
-    return SizedBox(
-      height: 110,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: milestones.length,
-        itemBuilder: (context, index) {
-          final m = milestones[index];
-          final bool achieved = m['achieved'];
-          return Container(
-            width: 140,
-            margin: const EdgeInsets.only(right: 12),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: achieved 
-                  ? (m['color'] as Color).withOpacity(0.1) 
-                  : (isDark ? Colors.white10 : Colors.grey[200]),
-              borderRadius: BorderRadius.circular(16),
-              border: achieved ? Border.all(color: (m['color'] as Color).withOpacity(0.5)) : null,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  m['icon'], 
-                  color: achieved ? m['color'] : Colors.grey, 
-                  size: 28
-                ),
-                const Spacer(),
-                Text(
-                  m['title'],
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: achieved ? (isDark ? Colors.white : Colors.black) : Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  m['desc'],
-                  style: TextStyle(fontSize: 10, color: achieved ? Colors.grey : Colors.grey[400]),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final serverState = _serverData['server_state'] ?? {};
@@ -180,6 +108,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final upSession = Utils.formatBytes(serverState['up_info_data'] ?? 0);
     final dlSpeedStr = "${Utils.formatBytes(serverState['dl_info_speed'] ?? 0)}/s";
     final upSpeedStr = "${Utils.formatBytes(serverState['up_info_speed'] ?? 0)}/s";
+    
+    // 格式化峰值速度字符串
+    final peakDlStr = "${Utils.formatBytes((_peakDlSpeed * 1024).toInt())}/s";
+    final peakUpStr = "${Utils.formatBytes((_peakUpSpeed * 1024).toInt())}/s";
+
     final freeSpace = Utils.formatBytes(serverState['free_space_on_disk'] ?? 0);
     final totalDl = Utils.formatBytes(serverState['alltime_dl'] ?? 0);
     final totalUp = Utils.formatBytes(serverState['alltime_ul'] ?? 0);
@@ -188,7 +121,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         ? ratioRaw.toStringAsFixed(2)
         : (ratioRaw ?? "0.00");
 
-    // 修改点：使用 ValueListenableBuilder 包裹 Scaffold
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
       builder: (context, isDark, child) {
@@ -216,24 +148,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 20),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 0, 10),
-                      child: Text(
-                        "成就里程碑", 
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold, 
-                          fontSize: 20,
-                          color: isDark ? Colors.white : Colors.black,
-                        )
-                      ),
-                    ),
-                    _buildMilestoneList(isDark), // 传入 isDark
-                    const SizedBox(height: 20),
-
+                    
                     _buildInfoCard(
                       isDark: isDark,
                       title: "服务器",
                       rows: [
+                        _buildServerStatusRow(isDark), // 状态与延迟指示器
                         _buildInfoRow("qBittorrent 版本", _appVersion, isDark, bold: true),
                       ],
                     ),
@@ -266,6 +186,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       sessionValue: dlSession,
                       speedLabel: "下载速率",
                       speedValue: dlSpeedStr,
+                      peakValue: peakDlStr, // 传入峰值
                       color: kPrimaryColor,
                       spots: _dlSpots,
                     ),
@@ -277,6 +198,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       sessionValue: upSession,
                       speedLabel: "上传速率",
                       speedValue: upSpeedStr,
+                      peakValue: peakUpStr, // 传入峰值
                       color: const Color(0xFF34C759),
                       spots: _upSpots,
                     ),
@@ -294,6 +216,40 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           ),
         );
       },
+    );
+  }
+
+  // 构建服务器状态行
+  Widget _buildServerStatusRow(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text("连接状态", style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black)),
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _isOnline ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _isOnline ? "在线 (${_pingMs}ms)" : "离线",
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: _isOnline ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -322,6 +278,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     required String sessionValue,
     required String speedLabel,
     required String speedValue,
+    required String peakValue, // 新增：峰值字符串
     required Color color,
     required List<FlSpot> spots,
   }) {
@@ -357,9 +314,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   ),
                 ],
               ),
-              Text(
-                speedValue,
-                style: const TextStyle(fontSize: 15, color: Colors.grey),
+              // 展示当前速度和峰值速度
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    speedValue,
+                    style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black),
+                  ),
+                  Text(
+                    "峰值: $peakValue",
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  ),
+                ],
               ),
             ],
           ),
@@ -396,7 +363,18 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     barWidth: 2,
                     isStrokeCapRound: true,
                     dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(show: false),
+                    // 新增：渐变填充
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        colors: [
+                          color.withOpacity(0.35),
+                          color.withOpacity(0.01),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
                   ),
                 ],
               ),
