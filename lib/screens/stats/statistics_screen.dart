@@ -96,7 +96,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  // 解析任务状态数量
   Map<String, int> _getTaskCounts() {
     int dl = 0, up = 0, paused = 0, error = 0;
     final torrents = _serverData['torrents'] as Map<String, dynamic>? ?? {};
@@ -164,15 +163,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     
-                    // 1. 全局快捷操作栏
                     _buildQuickActionBar(isDark, useAltSpeed),
                     const SizedBox(height: 16),
 
-                    // 2. 任务概览卡片
                     _buildTaskOverviewCards(isDark, taskCounts),
                     const SizedBox(height: 16),
 
-                    // 3. 服务器与历史统计
                     _buildInfoCard(
                       isDark: isDark,
                       title: "服务器",
@@ -193,7 +189,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     ),
                     const SizedBox(height: 16),
                     
-                    // 4. 当前会话图表
                     Padding(
                       padding: const EdgeInsets.only(left: 16, bottom: 8),
                       child: Text(
@@ -230,7 +225,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 5. 磁盘空间可视化进度卡片
                     _buildDiskSpaceCard(isDark, freeSpaceStr),
                     
                     const SizedBox(height: 120),
@@ -244,7 +238,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  // --- 新增：全局快捷操作栏 ---
   Widget _buildQuickActionBar(bool isDark, bool useAltSpeed) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -257,7 +250,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // 备用限速开关
           Row(
             children: [
               Icon(
@@ -279,22 +271,42 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 value: useAltSpeed,
                 activeColor: CupertinoColors.activeOrange,
                 onChanged: (val) async {
-                  // 调用 API 切换备用限速，你需要确保 ApiService 中有对应方法
-                  // await ApiService.toggleAltSpeedLimits();
-                  // _fetch(); 
+                  setState(() {
+                    if (_serverData['server_state'] != null) {
+                      _serverData['server_state']['use_alt_speed_limits'] = val;
+                    }
+                  });
+
+                  try {
+                    await ApiService.toggleAltSpeedLimitsMode(); 
+                    await Future.delayed(const Duration(milliseconds: 500));
+                    await _fetch();
+                  } catch (e) {
+                    setState(() {
+                      if (_serverData['server_state'] != null) {
+                        _serverData['server_state']['use_alt_speed_limits'] = !val;
+                      }
+                    });
+                    Utils.showToast("切换限速模式失败");
+                  }
                 },
               ),
             ],
           ),
-          // 暂停/恢复按钮
           Row(
             children: [
               CupertinoButton(
                 padding: EdgeInsets.zero,
                 minSize: 32,
-                onPressed: () {
-                  // await ApiService.pauseAll();
-                  // _fetch();
+                onPressed: () async {
+                  try {
+                    await ApiService.pauseAll();
+                    Utils.showToast("已暂停所有任务");
+                    await Future.delayed(const Duration(milliseconds: 500));
+                    await _fetch();
+                  } catch (e) {
+                    Utils.showToast("暂停失败");
+                  }
                 },
                 child: const Icon(CupertinoIcons.pause_circle_fill, color: CupertinoColors.destructiveRed, size: 28),
               ),
@@ -302,9 +314,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               CupertinoButton(
                 padding: EdgeInsets.zero,
                 minSize: 32,
-                onPressed: () {
-                  // await ApiService.resumeAll();
-                  // _fetch();
+                onPressed: () async {
+                  try {
+                    await ApiService.resumeAll();
+                    Utils.showToast("已恢复所有任务");
+                    await Future.delayed(const Duration(milliseconds: 500));
+                    await _fetch();
+                  } catch (e) {
+                    Utils.showToast("恢复失败");
+                  }
                 },
                 child: const Icon(CupertinoIcons.play_circle_fill, color: CupertinoColors.activeGreen, size: 28),
               ),
@@ -315,7 +333,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  // --- 新增：任务概览卡片 ---
   Widget _buildTaskOverviewCards(bool isDark, Map<String, int> counts) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -363,11 +380,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  // --- 新增：磁盘空间可视化进度卡片 ---
   Widget _buildDiskSpaceCard(bool isDark, String freeSpaceStr) {
-    // qBittorrent 默认 API 不提供总空间，这里仅作高颜值视觉进度条展示
-    // 若你后续有接口获取总空间，可计算真实的 percentage = (总-余)/总
-    const double diskFillRatio = 0.65; // 演示比例：占用 65%
+    const double diskFillRatio = 0.65; 
     
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -404,7 +418,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          // 可视化进度条
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Stack(
@@ -436,7 +449,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  // 原有组件保持不变...
   Widget _buildServerStatusRow(bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

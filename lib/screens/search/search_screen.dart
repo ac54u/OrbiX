@@ -99,6 +99,28 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  // 获取资源的下载链接或磁力链接
+  String _getDownloadUrl(dynamic item) {
+    return item['magnetUrl'] ?? item['downloadUrl'] ?? item['guid'] ?? '';
+  }
+
+  // 核心功能：一键推送到 qBittorrent
+  Future<void> _sendToQbittorrent(String url) async {
+    if (url.isEmpty) {
+      Utils.showToast("未能获取到有效的下载链接");
+      return;
+    }
+    
+    Utils.showToast("正在发送至 qBittorrent...");
+    final success = await ApiService.addTorrent(url);
+    
+    if (success) {
+      Utils.showToast("🎉 已成功添加到下载队列");
+    } else {
+      Utils.showToast("❌ 添加失败，请检查服务器连接");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
@@ -168,11 +190,19 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildResultItem(dynamic item, bool isDark) {
+    final downloadUrl = _getDownloadUrl(item);
+
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         CupertinoPageRoute(builder: (_) => MovieDetailScreen(item: item)),
       ),
+      onLongPress: () {
+        if (downloadUrl.isNotEmpty) {
+          Clipboard.setData(ClipboardData(text: downloadUrl));
+          Utils.showToast("链接已复制到剪贴板");
+        }
+      },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         padding: const EdgeInsets.all(16),
@@ -181,76 +211,130 @@ class _SearchScreenState extends State<SearchScreen> {
           borderRadius: BorderRadius.circular(12),
           boxShadow: isDark ? [] : kMinimalShadow,
         ),
-        child: Row(
+        child: Column(
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item['title'] ?? "无标题",
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: (item['tags'] as List).map<Widget>((t) {
-                      bool is4k = t == '4K';
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: is4k ? Colors.red : Colors.blue,
-                          ),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          t,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: is4k ? Colors.red : Colors.blue,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "${item['indexer'] ?? 'Unknown'} • ${Utils.formatBytes(item['size'] ?? 0)}",
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "${item['seeders'] ?? 0}",
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF34C759),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item['title'] ?? "无标题",
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: (item['tags'] as List).map<Widget>((t) {
+                          bool is4k = t == '4K';
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: is4k ? CupertinoColors.destructiveRed : CupertinoColors.activeBlue,
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              t,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: is4k ? CupertinoColors.destructiveRed : CupertinoColors.activeBlue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "${item['indexer'] ?? 'Unknown'} • ${Utils.formatBytes(item['size'] ?? 0)}",
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
                   ),
                 ),
-                const Text(
-                  "做种",
-                  style: TextStyle(fontSize: 10, color: Colors.grey),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      "${item['seeders'] ?? 0}",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF34C759),
+                      ),
+                    ),
+                    const Text(
+                      "做种",
+                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                  ],
                 ),
               ],
             ),
+            
+            // 下方操作栏区
+            if (downloadUrl.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Divider(height: 1, color: isDark ? Colors.white10 : Colors.grey[200]),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minSize: 30,
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: downloadUrl));
+                      Utils.showToast("已复制链接");
+                    },
+                    child: Row(
+                      children: const [
+                        Icon(CupertinoIcons.doc_on_clipboard, size: 16, color: Colors.grey),
+                        SizedBox(width: 4),
+                        Text("复制", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    color: kPrimaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    minSize: 30,
+                    onPressed: () => _sendToQbittorrent(downloadUrl),
+                    child: Row(
+                      children: [
+                        Icon(CupertinoIcons.cloud_download, size: 16, color: kPrimaryColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          "下载", 
+                          style: TextStyle(
+                            fontSize: 13, 
+                            fontWeight: FontWeight.bold, 
+                            color: kPrimaryColor
+                          )
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ]
           ],
         ),
       ),

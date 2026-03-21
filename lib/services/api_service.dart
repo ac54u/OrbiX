@@ -123,7 +123,6 @@ class ApiService {
     }
   }
 
-  // ✅ 新增：获取种子包含的文件列表 (用于详情页展示)
   static Future<List<dynamic>> getTorrentContent(String hash) async {
     _ensureInit();
     try {
@@ -165,6 +164,59 @@ class ApiService {
       return "HTTP ${r.statusCode}";
     } catch (e) {
       return "网络请求异常";
+    }
+  }
+
+  // ✅ 新增：切换备用限速模式 (小乌龟)
+  static Future<void> toggleAltSpeedLimitsMode() async {
+    _ensureInit();
+    try {
+      final u = await _url();
+      if (u == null) return;
+      final opts = await _getOptions();
+      await _dio.post(
+        '$u/api/v2/transfer/toggleSpeedLimitsMode',
+        options: opts,
+      );
+    } catch (e) {
+      print("切换备用限速失败: $e");
+      rethrow;
+    }
+  }
+
+  // ✅ 新增：暂停所有任务
+  static Future<void> pauseAll() async {
+    _ensureInit();
+    try {
+      final u = await _url();
+      if (u == null) return;
+      final opts = await _getOptions();
+      await _dio.post(
+        '$u/api/v2/torrents/pause',
+        data: 'hashes=all',
+        options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
+      );
+    } catch (e) {
+      print("暂停所有任务失败: $e");
+      rethrow;
+    }
+  }
+
+  // ✅ 新增：恢复所有任务
+  static Future<void> resumeAll() async {
+    _ensureInit();
+    try {
+      final u = await _url();
+      if (u == null) return;
+      final opts = await _getOptions();
+      await _dio.post(
+        '$u/api/v2/torrents/resume',
+        data: 'hashes=all',
+        options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
+      );
+    } catch (e) {
+      print("恢复所有任务失败: $e");
+      rethrow;
     }
   }
 
@@ -237,13 +289,11 @@ class ApiService {
     }
   }
 
-  // ✅ 新增：修改服务器偏好设置 (如下载路径)
   static Future<bool> setPreferences({required String savePath}) async {
     _ensureInit();
     try {
       final u = await _url();
       final opts = await _getOptions();
-      // qBittorrent 的 API 需要把参数打包成 json 字符串放在 'json' 字段里
       final data = {
         'json': jsonEncode({'save_path': savePath})
       };
