@@ -6,6 +6,7 @@ import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
 import 'movie_detail_screen.dart';
+import 'radarr_movie_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   final String? initialQuery;
@@ -347,87 +348,98 @@ class _SearchScreenState extends State<SearchScreen> {
 
     bool isAdded = item['added'] != "0001-01-01T00:00:00Z" && item['added'] != null;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? kCardColorDark : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: isDark ? [] : kMinimalShadow,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 电影海报
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: posterUrl.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: posterUrl,
-                    width: 70,
-                    height: 105,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(color: Colors.grey[300], width: 70, height: 105),
-                    errorWidget: (context, url, error) => Container(color: Colors.grey[300], width: 70, height: 105, child: const Icon(CupertinoIcons.film)),
-                  )
-                : Container(color: Colors.grey[300], width: 70, height: 105, child: const Icon(CupertinoIcons.film)),
+    // 💡 包裹了 GestureDetector 实现点击跳转
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          CupertinoPageRoute(
+            builder: (_) => RadarrMovieDetailScreen(movie: item),
           ),
-          const SizedBox(width: 12),
-          // 电影信息
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item['title'] ?? "未知电影",
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "${item['year'] ?? ''} • TMDB: ${item['tmdbId'] ?? ''}",
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  item['overview'] ?? "暂无简介",
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600]),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: isAdded
-                      ? CupertinoButton(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          color: CupertinoColors.activeGreen.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          minSize: 30,
-                          onPressed: null, // 已存在的禁用点击
-                          child: const Text("已在库中", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: CupertinoColors.activeGreen)),
-                        )
-                      : CupertinoButton(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          color: const Color(0xFFFF9500).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          minSize: 30,
-                          onPressed: () => _sendToRadarr(item),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(CupertinoIcons.add_circled_solid, size: 16, color: Color(0xFFFF9500)),
-                              SizedBox(width: 4),
-                              Text("委托 Radarr", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF9500))),
-                            ],
-                          ),
-                        ),
-                ),
-              ],
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? kCardColorDark : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: isDark ? [] : kMinimalShadow,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 电影海报
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: posterUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: posterUrl,
+                      width: 70,
+                      height: 105,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(color: Colors.grey[300], width: 70, height: 105),
+                      errorWidget: (context, url, error) => Container(color: Colors.grey[300], width: 70, height: 105, child: const Icon(CupertinoIcons.film)),
+                    )
+                  : Container(color: Colors.grey[300], width: 70, height: 105, child: const Icon(CupertinoIcons.film)),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            // 电影信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item['title'] ?? "未知电影",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "${item['year'] ?? ''} • TMDB: ${item['tmdbId'] ?? ''}",
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    item['overview'] ?? "暂无简介",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: isAdded
+                        ? CupertinoButton(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            color: CupertinoColors.activeGreen.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            minSize: 30,
+                            onPressed: null, // 已存在的禁用点击
+                            child: const Text("已在库中", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: CupertinoColors.activeGreen)),
+                          )
+                        : CupertinoButton(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            color: const Color(0xFFFF9500).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            minSize: 30,
+                            onPressed: () => _sendToRadarr(item),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(CupertinoIcons.add_circled_solid, size: 16, color: Color(0xFFFF9500)),
+                                SizedBox(width: 4),
+                                Text("委托 Radarr", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF9500))),
+                              ],
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
