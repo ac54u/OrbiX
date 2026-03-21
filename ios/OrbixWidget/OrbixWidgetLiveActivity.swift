@@ -6,14 +6,14 @@ import SwiftUI
 struct OrbixWidgetLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DownloadAttributes.self) { context in
-            // 🌟 锁屏和通知中心的 UI (优化排版)
+            // 🌟 锁屏和通知中心的 UI
             VStack(spacing: 8) {
                 HStack {
                     Image(systemName: "arrow.down.circle.fill")
                         .foregroundColor(.blue)
                     Text(context.attributes.movieName)
                         .font(.headline)
-                        .lineLimit(1) // 限制1行，防止名字太长顶破UI
+                        .lineLimit(1)
                     Spacer()
                 }
                 HStack {
@@ -21,13 +21,27 @@ struct OrbixWidgetLiveActivity: Widget {
                         .font(.subheadline)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
+                        .contentTransition(.numericText()) // 🚀 丝滑数字滚动动画
                     Spacer()
-                    Text(context.state.eta) // 🚀 显示剩余时间
+                    Text(context.state.eta)
                         .font(.subheadline)
                         .foregroundColor(.gray)
+                        .contentTransition(.numericText()) // 🚀 丝滑数字滚动动画
                 }
                 ProgressView(value: context.state.progress)
                     .tint(.blue)
+                
+                HStack {
+                    Text(context.state.sizeInfo) // 🚀 显示容量信息
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("\(Int(context.state.progress * 100))%")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.blue)
+                        .contentTransition(.numericText())
+                }
             }
             .padding()
             .activityBackgroundTint(Color.black.opacity(0.85))
@@ -36,33 +50,34 @@ struct OrbixWidgetLiveActivity: Widget {
         } dynamicIsland: { context in
             // 🌟 顶部灵动岛的 UI
             DynamicIsland {
-                // 长按展开：左侧图标
                 DynamicIslandExpandedRegion(.leading) {
                     Image(systemName: "arrow.down.circle.fill")
                         .foregroundColor(.blue)
                         .font(.title2)
                 }
-                // 长按展开：中间标题
                 DynamicIslandExpandedRegion(.center) {
                     Text(context.attributes.movieName)
                         .lineLimit(1)
                         .font(.headline)
                 }
-                // 长按展开：右侧网速
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.speed)
                         .font(.subheadline)
                         .fontWeight(.semibold)
-                        .foregroundColor(.green) // 网速变成绿色，更抢眼
+                        .foregroundColor(.green)
+                        .contentTransition(.numericText()) // 🚀 动画
                 }
-                // 长按展开：底部进度条和剩余时间
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 4) {
                         HStack {
+                            Text(context.state.sizeInfo) // 🚀 左下角显示容量
+                                .font(.caption)
+                                .foregroundColor(.gray)
                             Spacer()
                             Text(context.state.eta)
                                 .font(.caption)
                                 .foregroundColor(.gray)
+                                .contentTransition(.numericText())
                         }
                         ProgressView(value: context.state.progress)
                             .tint(.blue)
@@ -70,16 +85,15 @@ struct OrbixWidgetLiveActivity: Widget {
                     .padding(.top, 5)
                 }
             } compactLeading: {
-                // 收起时：左侧 UI
                 Image(systemName: "arrow.down.circle.fill")
                     .foregroundColor(.blue)
             } compactTrailing: {
-                // 收起时：右侧 UI
                 Text("\(Int(context.state.progress * 100))%")
                     .font(.caption2)
                     .fontWeight(.bold)
+                    .foregroundColor(.green) // 换成绿色更显眼
+                    .contentTransition(.numericText())
             } minimal: {
-                // 极简模式
                 Image(systemName: "arrow.down")
                     .foregroundColor(.blue)
             }

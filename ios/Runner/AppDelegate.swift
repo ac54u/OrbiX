@@ -20,7 +20,6 @@ import ActivityKit
     liveActivityChannel.setMethodCallHandler({
       (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
         
-      // ⚠️ 加入 iOS 版本判断，保护低版本系统不崩溃
       if #available(iOS 16.1, *) {
           switch call.method {
           case "startDownload":
@@ -33,14 +32,13 @@ import ActivityKit
               }
               
           case "updateProgress":
-              // 🚀 新增：在这里解析 Flutter 传过来的 eta (剩余时间)
               if let args = call.arguments as? [String: Any],
                  let progress = args["progress"] as? Double,
                  let speed = args["speed"] as? String,
-                 let eta = args["eta"] as? String {
+                 let eta = args["eta"] as? String,
+                 let sizeInfo = args["sizeInfo"] as? String { // 🚀 接收 sizeInfo
                   
-                  // 🚀 把 eta 传给管理器
-                  LiveActivityManager.shared.updateProgress(progress: progress, speed: speed, eta: eta)
+                  LiveActivityManager.shared.updateProgress(progress: progress, speed: speed, eta: eta, sizeInfo: sizeInfo)
                   result(true)
               } else {
                   result(FlutterError(code: "INVALID_ARGS", message: "参数错误", details: nil))
@@ -54,7 +52,6 @@ import ActivityKit
               result(FlutterMethodNotImplemented)
           }
       } else {
-          // 如果手机系统低于 16.1，静默失败，啥也不干
           result(FlutterError(code: "UNSUPPORTED", message: "灵动岛需要 iOS 16.1+", details: nil))
       }
     })
@@ -63,7 +60,6 @@ import ActivityKit
   }
 }
 
-// ⚠️ 给整个管理器打上标签，限制仅在 16.1 及以上系统编译
 @available(iOS 16.1, *)
 class LiveActivityManager {
     static let shared = LiveActivityManager()
@@ -73,33 +69,45 @@ class LiveActivityManager {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         
         let attributes = DownloadAttributes(movieName: movieName)
-        // 🚀 新增：加上初始的 eta 状态
-        let initialState = DownloadAttributes.ContentState(progress: 0.0, speed: "启动中...", eta: "计算中...")
+        let initialState = DownloadAttributes.ContentState(progress: 0.0, speed: "启动中...", eta: "计算中...", sizeInfo: "0 MB / 0 MB")
         
         do {
-            currentActivity = try Activity.request(
-                attributes: attributes,
-                contentState: initialState,
-                pushType: nil
-            )
+            // 🚀 适配 iOS 16.2+ 新 API，消除黄标警告
+            if #available(iOS 16.2, *) {
+                let content = ActivityContent(state: initialState, staleDate: nil)
+                currentActivity = try Activity.request(attributes: attributes, content: content, pushType: nil)
+            } else {
+                currentActivity = try Activity.request(attributes: attributes, contentState: initialState, pushType: nil)
+            }
         } catch {
             print("灵动岛启动失败: \(error)")
         }
     }
 
-    // 🚀 新增：加上 eta 参数
-    func updateProgress(progress: Double, speed: String, eta: String) {
+    func updateProgress(progress: Double, speed: String, eta: String, sizeInfo: String) {
         Task {
-            let updatedState = DownloadAttributes.ContentState(progress: progress, speed: speed, eta: eta)
-            await currentActivity?.update(using: updatedState)
+            let updatedState = DownloadAttributes.ContentState(progress: progress, speed: speed, eta: eta, sizeInfo: sizeInfo)
+            
+            // 🚀 适配 iOS 16.2+
+            if #available(iOS 16.2, *) {
+                let content = ActivityContent(state: updatedState, staleDate: nil)
+                await currentActivity?.update(content)
+            } else {
+                await currentActivity?.update(using: updatedState)
+            }
         }
     }
 
     func stopDownload() {
         Task {
-            // 🚀 新增：下载完成时的 eta 状态
-            let finalState = DownloadAttributes.ContentState(progress: 1.0, speed: "下载完成", eta: "0秒")
-            await currentActivity?.end(using: finalState, dismissalPolicy: .default)
+            let finalState = DownloadAttributes.ContentState(progress: 1.0, speed: "下载完成", eta: "0秒", sizeInfo: "已完成")
+            
+            if #available(iOS 16.2, *) {
+                let content = ActivityContent(state: finalState, staleDate: nil)
+                await currentActivity?.end(content, dismissalPolicy: .default)
+            } else {
+                await currentActivity?.end(using: finalState, dismissalPolicy: .default)
+            }
             currentActivity = nil
         }
     }

@@ -99,7 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _loginTime = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
       }
       _refreshInterval = prefs.getInt('refresh_rate') ?? 3;
-      String path = prefs.getString('default_path') ?? "/data/Movies";
+      String path = prefs.getString('default_path') ?? "/data/downloads";
       _pathCtrl.text = path;
       _cellularWarn = prefs.getBool('cellular_warn') ?? true;
 

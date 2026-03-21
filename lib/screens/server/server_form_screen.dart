@@ -151,7 +151,7 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
                 children: [
                   _input("名称", _nameCtrl, "例如: Nas", isDark),
                   _input("主机", _hostCtrl, "IP 或 域名", isDark),
-                  _input("端口", _portCtrl, "8080", isDark),
+                  _input("端口", _portCtrl, "8080或443", isDark),
                 ],
               ),
               CupertinoListSection.insetGrouped(
