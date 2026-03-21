@@ -6,7 +6,7 @@ import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
 import 'movie_detail_screen.dart';
-import 'radarr_movie_detail_screen.dart';
+import 'radarr_movie_detail_screen.dart'; // 引入 Radarr 详情页
 
 class SearchScreen extends StatefulWidget {
   final String? initialQuery;
@@ -337,7 +337,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // --- 新增的 Radarr 电影卡片 UI ---
+  // --- 新增的 Radarr 电影卡片 UI 附带点击跳转 ---
   Widget _buildRadarrItem(dynamic item, bool isDark) {
     // 获取电影海报
     String posterUrl = '';
@@ -348,7 +348,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
     bool isAdded = item['added'] != "0001-01-01T00:00:00Z" && item['added'] != null;
 
-    // 💡 包裹了 GestureDetector 实现点击跳转
     return GestureDetector(
       onTap: () {
         Navigator.push(

@@ -30,7 +30,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _refreshInterval = 3;
   bool _cellularWarn = true;
   
-  // 新增：服务器状态相关
   bool _isOnline = false;
   int _pingMs = 0;
   Timer? _timer;
@@ -40,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _prowlarrKeyCtrl = TextEditingController();
   final _radarrUrlCtrl = TextEditingController();
   final _radarrKeyCtrl = TextEditingController();
+  
   // 新增：Emby 相关控制器
   final _embyUrlCtrl = TextEditingController();
   final _embyKeyCtrl = TextEditingController();
@@ -49,7 +49,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadData();
-    // 启动定时器，每 3 秒检测一次服务器连通性和 Ping
     _checkServerStatus();
     _timer = Timer.periodic(const Duration(seconds: 3), (_) => _checkServerStatus());
   }
@@ -68,7 +67,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  // 获取服务器 Ping 和 版本号
   Future<void> _checkServerStatus() async {
     if (_currentServer == null) return;
     
@@ -109,7 +107,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _prowlarrUrlCtrl.text = prefs.getString('prowlarr_url') ?? defaultUrl;
       _prowlarrKeyCtrl.text = prefs.getString('prowlarr_key') ?? '';
       
-      // 读取 Radarr 配置
       _radarrUrlCtrl.text = prefs.getString('radarr_url') ?? '';
       _radarrKeyCtrl.text = prefs.getString('radarr_key') ?? '';
 
@@ -141,7 +138,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final p = await SharedPreferences.getInstance();
     await p.setString('prowlarr_url', _prowlarrUrlCtrl.text);
     await p.setString('prowlarr_key', _prowlarrKeyCtrl.text);
-    // 保存 Radarr 配置
     await p.setString('radarr_url', _radarrUrlCtrl.text);
     await p.setString('radarr_key', _radarrKeyCtrl.text);
     // 保存 Emby 配置
@@ -176,7 +172,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: Container(
-              height: 700, // 再次增高以适应 Emby 配置项
+              height: 700, 
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: isDark ? kCardColorDark : kBgColorLight,
@@ -237,7 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // 新增的 Emby 填写区域
+                    // 新增的 Emby 配置区域
                     Text(
                       "Emby 地址",
                       style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
@@ -254,7 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     CupertinoTextField(
                       controller: _embyKeyCtrl,
-                      placeholder: "在 Emby 设置 -> API 密钥中获取",
+                      placeholder: "在 Emby 设置 -> API 密钥获取",
                       style: TextStyle(color: isDark ? Colors.white : Colors.black),
                     ),
                     const SizedBox(height: 24),
@@ -518,7 +514,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               color: isDark ? Colors.white : Colors.black,
                             ),
                           ),
-                          subtitle: Text("配置 Prowlarr, Radarr & TMDB", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
+                          subtitle: Text("配置 Prowlarr, Radarr & Emby", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
                           leading: const Icon(
                             CupertinoIcons.search_circle_fill,
                             color: Colors.purple,
