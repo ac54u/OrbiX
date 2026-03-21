@@ -7,6 +7,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import '../core/constants.dart'; 
 import '../core/utils.dart';     
 import 'server_manager.dart';    
+import 'package:url_launcher/url_launcher.dart';
 
 class ApiService {
   static final Dio _dio = Dio();
@@ -527,6 +528,54 @@ class ApiService {
       return r.data;
     } catch (e) {
       throw "Radarr 连接失败: $e";
+    }
+  }
+
+  // --- 新增：Emby 联动 API ---
+
+  /// 利用 TMDB ID 精准查询 Emby 中是否已有该电影
+  static Future<String?> checkMovieInEmby(String tmdbId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString('emby_url') ?? '';
+    final key = prefs.getString('emby_api_key') ?? '';
+
+    if (url.isEmpty || key.isEmpty) return null;
+
+    final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+    
+    // AnyProviderIdEquals 是 Emby 非常好用的高级查询参数，直接匹配 TMDB ID，绝不误判
+    final uri = Uri.parse('$cleanUrl/emby/Items?AnyProviderIdEquals=$tmdbId&Recursive=true&IncludeItemTypes=Movie&api_key=$key');
+
+    try {
+      final response = await http.get(uri);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // 如果查到了，返回 Emby 内部的 ItemId
+        if (data['TotalRecordCount'] != null && data['TotalRecordCount'] > 0) {
+          return data['Items'][0]['Id']; 
+        }
+      }
+    } catch (e) {
+      print("Check Emby error: $e");
+    }
+    return null; // 没查到或者报错都返回 null
+  }
+
+  /// 唤醒 Emby 播放
+  static Future<void> playInEmby(String itemId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString('emby_url') ?? '';
+    final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+
+    // 拼接 Emby Web 端的播放地址
+    // 在 iOS 上，如果你安装了 Emby 官方 App，系统会自动拦截这个链接拉起 App (Universal Link)
+    // 如果没装 App，也会在浏览器里直接打开播放页
+    final playUrl = Uri.parse('$cleanUrl/web/index.html#!/item/item.html?id=$itemId');
+    
+    if (await canLaunchUrl(playUrl)) {
+      await launchUrl(playUrl, mode: LaunchMode.externalApplication);
+    } else {
+      throw Exception("无法拉起 Emby");
     }
   }
 

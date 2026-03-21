@@ -38,9 +38,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _pathCtrl = TextEditingController(); 
   final _prowlarrUrlCtrl = TextEditingController();
   final _prowlarrKeyCtrl = TextEditingController();
-  // 新增：Radarr 相关控制器
   final _radarrUrlCtrl = TextEditingController();
   final _radarrKeyCtrl = TextEditingController();
+  // 新增：Emby 相关控制器
+  final _embyUrlCtrl = TextEditingController();
+  final _embyKeyCtrl = TextEditingController();
   final _tmdbKeyCtrl = TextEditingController();
 
   @override
@@ -60,6 +62,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _prowlarrKeyCtrl.dispose();
     _radarrUrlCtrl.dispose();
     _radarrKeyCtrl.dispose();
+    _embyUrlCtrl.dispose();
+    _embyKeyCtrl.dispose();
     _tmdbKeyCtrl.dispose();
     super.dispose();
   }
@@ -108,6 +112,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // 读取 Radarr 配置
       _radarrUrlCtrl.text = prefs.getString('radarr_url') ?? '';
       _radarrKeyCtrl.text = prefs.getString('radarr_key') ?? '';
+
+      // 读取 Emby 配置
+      _embyUrlCtrl.text = prefs.getString('emby_url') ?? '';
+      _embyKeyCtrl.text = prefs.getString('emby_api_key') ?? '';
       
       _tmdbKeyCtrl.text = prefs.getString('tmdb_key') ?? '';
     });
@@ -136,6 +144,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // 保存 Radarr 配置
     await p.setString('radarr_url', _radarrUrlCtrl.text);
     await p.setString('radarr_key', _radarrKeyCtrl.text);
+    // 保存 Emby 配置
+    await p.setString('emby_url', _embyUrlCtrl.text);
+    await p.setString('emby_api_key', _embyKeyCtrl.text);
+    
     await p.setString('tmdb_key', _tmdbKeyCtrl.text);
     Utils.showToast("扩展配置已保存");
     Navigator.pop(context);
@@ -164,7 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: Container(
-              height: 650, // 增高了弹窗以适应更多的输入框
+              height: 700, // 再次增高以适应 Emby 配置项
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: isDark ? kCardColorDark : kBgColorLight,
@@ -204,7 +216,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 24),
                     
-                    // 新增的 Radarr 填写区域
                     Text(
                       "Radarr 地址",
                       style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
@@ -222,6 +233,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     CupertinoTextField(
                       controller: _radarrKeyCtrl,
                       placeholder: "Radarr 设置获取",
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // 新增的 Emby 填写区域
+                    Text(
+                      "Emby 地址",
+                      style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
+                    ),
+                    CupertinoTextField(
+                      controller: _embyUrlCtrl,
+                      placeholder: "http://192.168.1.x:8096",
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Emby API Key",
+                      style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
+                    ),
+                    CupertinoTextField(
+                      controller: _embyKeyCtrl,
+                      placeholder: "在 Emby 设置 -> API 密钥中获取",
                       style: TextStyle(color: isDark ? Colors.white : Colors.black),
                     ),
                     const SizedBox(height: 24),
@@ -312,7 +345,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       ),
                                     ),
                                   ),
-                                  // 高颜值状态徽章
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     decoration: BoxDecoration(

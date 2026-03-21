@@ -16,6 +16,32 @@ class RadarrMovieDetailScreen extends StatefulWidget {
 class _RadarrMovieDetailScreenState extends State<RadarrMovieDetailScreen> {
   bool _isAdding = false;
 
+  // 新增：Emby 状态变量
+  String? _embyItemId;
+  bool _isCheckingEmby = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkEmbyStatus();
+  }
+
+  // 新增：自动查询 Emby 状态
+  Future<void> _checkEmbyStatus() async {
+    final tmdbId = widget.movie['tmdbId']?.toString();
+    if (tmdbId != null && tmdbId.isNotEmpty) {
+      final itemId = await ApiService.checkMovieInEmby(tmdbId);
+      if (mounted) {
+        setState(() {
+          _embyItemId = itemId;
+          _isCheckingEmby = false;
+        });
+      }
+    } else {
+      if (mounted) setState(() => _isCheckingEmby = false);
+    }
+  }
+
   // 提取图片
   String _getImageUrl(String type) {
     if (widget.movie['images'] != null) {
@@ -230,30 +256,48 @@ class _RadarrMovieDetailScreenState extends State<RadarrMovieDetailScreen> {
                           
                           const SizedBox(height: 40),
 
-                          // 4. 底部大按钮
+                          // 4. 底部大按钮 (已升级为支持 Emby 判断)
                           SizedBox(
                             width: double.infinity,
                             height: 50,
-                            child: isAdded
-                                ? CupertinoButton(
-                                    color: CupertinoColors.activeGreen.withOpacity(0.1),
-                                    onPressed: null,
-                                    child: const Text("已在 Radarr 库中", style: TextStyle(fontWeight: FontWeight.bold, color: CupertinoColors.activeGreen)),
-                                  )
-                                : CupertinoButton(
-                                    color: const Color(0xFFFF9500),
-                                    onPressed: _isAdding ? null : _addToRadarr,
-                                    child: _isAdding 
-                                      ? const CupertinoActivityIndicator(color: Colors.white)
-                                      : Row(
+                            child: _isCheckingEmby
+                                ? const Center(child: CupertinoActivityIndicator()) // 正在查询 Emby 状态
+                                : _embyItemId != null
+                                    // 状态 1：Emby 里已经有了，高亮绿色播放按钮
+                                    ? CupertinoButton(
+                                        color: const Color(0xFF52B54B), // Emby 标志性绿色
+                                        onPressed: () => ApiService.playInEmby(_embyItemId!),
+                                        child: Row(
                                           mainAxisAlignment: MainAxisAlignment.center,
                                           children: const [
-                                            Icon(CupertinoIcons.cloud_download, color: Colors.white),
+                                            Icon(CupertinoIcons.play_circle_fill, color: Colors.white),
                                             SizedBox(width: 8),
-                                            Text("委托 Radarr 下载", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                                            Text("在 Emby 中播放", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                                           ],
                                         ),
-                                  ),
+                                      )
+                                    // 状态 2：Emby 没有，但在 Radarr 库里
+                                    : isAdded
+                                        ? CupertinoButton(
+                                            color: CupertinoColors.activeGreen.withOpacity(0.1),
+                                            onPressed: null,
+                                            child: const Text("已在 Radarr 库中 (等待下载)", style: TextStyle(fontWeight: FontWeight.bold, color: CupertinoColors.activeGreen, fontSize: 14)),
+                                          )
+                                        // 状态 3：库里也没有，显示下载按钮
+                                        : CupertinoButton(
+                                            color: const Color(0xFFFF9500),
+                                            onPressed: _isAdding ? null : _addToRadarr,
+                                            child: _isAdding 
+                                              ? const CupertinoActivityIndicator(color: Colors.white)
+                                              : Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: const [
+                                                    Icon(CupertinoIcons.cloud_download, color: Colors.white),
+                                                    SizedBox(width: 8),
+                                                    Text("委托 Radarr 下载", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                                                  ],
+                                                ),
+                                          ),
                           ),
                           const SizedBox(height: 40),
                         ],
