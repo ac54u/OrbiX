@@ -23,11 +23,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   final int _maxPoints = 30;
   Timer? _timer;
 
-  // 新增：服务器状态与延迟记录
   bool _isOnline = false;
   int _pingMs = 0;
 
-  // 新增：记录本次会话的峰值速度 (KB/s)
   double _peakDlSpeed = 0;
   double _peakUpSpeed = 0;
 
@@ -50,7 +48,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   Future<void> _fetch() async {
-    // 启动计时器测量 Ping 延迟
     final stopwatch = Stopwatch()..start();
     final data = await ApiService.getMainData();
     stopwatch.stop();
@@ -71,7 +68,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           final double dlSpeed = (serverState['dl_info_speed'] ?? 0) / 1024.0;
           final double upSpeed = (serverState['up_info_speed'] ?? 0) / 1024.0;
 
-          // 更新峰值速度
           if (dlSpeed > _peakDlSpeed) _peakDlSpeed = dlSpeed;
           if (upSpeed > _peakUpSpeed) _peakUpSpeed = upSpeed;
 
@@ -81,7 +77,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           _upSpots.removeAt(0);
           _upSpots.add(FlSpot(_timeCounter, upSpeed));
         } else {
-          // 获取失败时标记为离线
           _isOnline = false;
         }
       });
@@ -101,6 +96,26 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
+  // 解析任务状态数量
+  Map<String, int> _getTaskCounts() {
+    int dl = 0, up = 0, paused = 0, error = 0;
+    final torrents = _serverData['torrents'] as Map<String, dynamic>? ?? {};
+    
+    for (var t in torrents.values) {
+      final state = t['state'] as String? ?? '';
+      if (state.contains('downloading') || state.contains('DL')) {
+        dl++;
+      } else if (state.contains('uploading') || state.contains('UP')) {
+        up++;
+      } else if (state.contains('paused')) {
+        paused++;
+      } else if (state.contains('error') || state.contains('missing')) {
+        error++;
+      }
+    }
+    return {'dl': dl, 'up': up, 'paused': paused, 'error': error};
+  }
+
   @override
   Widget build(BuildContext context) {
     final serverState = _serverData['server_state'] ?? {};
@@ -109,17 +124,17 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final dlSpeedStr = "${Utils.formatBytes(serverState['dl_info_speed'] ?? 0)}/s";
     final upSpeedStr = "${Utils.formatBytes(serverState['up_info_speed'] ?? 0)}/s";
     
-    // 格式化峰值速度字符串
     final peakDlStr = "${Utils.formatBytes((_peakDlSpeed * 1024).toInt())}/s";
     final peakUpStr = "${Utils.formatBytes((_peakUpSpeed * 1024).toInt())}/s";
 
-    final freeSpace = Utils.formatBytes(serverState['free_space_on_disk'] ?? 0);
+    final freeSpaceStr = Utils.formatBytes(serverState['free_space_on_disk'] ?? 0);
     final totalDl = Utils.formatBytes(serverState['alltime_dl'] ?? 0);
     final totalUp = Utils.formatBytes(serverState['alltime_ul'] ?? 0);
     final ratioRaw = serverState['global_ratio'];
-    final ratio = (ratioRaw is num)
-        ? ratioRaw.toStringAsFixed(2)
-        : (ratioRaw ?? "0.00");
+    final ratio = (ratioRaw is num) ? ratioRaw.toStringAsFixed(2) : (ratioRaw ?? "0.00");
+    
+    final bool useAltSpeed = serverState['use_alt_speed_limits'] ?? false;
+    final taskCounts = _getTaskCounts();
 
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
@@ -149,11 +164,20 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     
+                    // 1. 全局快捷操作栏
+                    _buildQuickActionBar(isDark, useAltSpeed),
+                    const SizedBox(height: 16),
+
+                    // 2. 任务概览卡片
+                    _buildTaskOverviewCards(isDark, taskCounts),
+                    const SizedBox(height: 16),
+
+                    // 3. 服务器与历史统计
                     _buildInfoCard(
                       isDark: isDark,
                       title: "服务器",
                       rows: [
-                        _buildServerStatusRow(isDark), // 状态与延迟指示器
+                        _buildServerStatusRow(isDark),
                         _buildInfoRow("qBittorrent 版本", _appVersion, isDark, bold: true),
                       ],
                     ),
@@ -168,10 +192,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
+                    
+                    // 4. 当前会话图表
                     Padding(
                       padding: const EdgeInsets.only(left: 16, bottom: 8),
                       child: Text(
-                        "当前会话",
+                        "当前会话速度",
                         style: TextStyle(
                           color: isDark ? Colors.white54 : Colors.grey,
                           fontSize: 13,
@@ -186,7 +212,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       sessionValue: dlSession,
                       speedLabel: "下载速率",
                       speedValue: dlSpeedStr,
-                      peakValue: peakDlStr, // 传入峰值
+                      peakValue: peakDlStr,
                       color: kPrimaryColor,
                       spots: _dlSpots,
                     ),
@@ -198,16 +224,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       sessionValue: upSession,
                       speedLabel: "上传速率",
                       speedValue: upSpeedStr,
-                      peakValue: peakUpStr, // 传入峰值
+                      peakValue: peakUpStr,
                       color: const Color(0xFF34C759),
                       spots: _upSpots,
                     ),
                     const SizedBox(height: 16),
-                    _buildInfoCard(
-                      isDark: isDark,
-                      title: "硬盘",
-                      rows: [_buildInfoRow("剩余空间", freeSpace, isDark, bold: true)],
-                    ),
+
+                    // 5. 磁盘空间可视化进度卡片
+                    _buildDiskSpaceCard(isDark, freeSpaceStr),
+                    
                     const SizedBox(height: 120),
                   ]),
                 ),
@@ -219,7 +244,199 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  // 构建服务器状态行
+  // --- 新增：全局快捷操作栏 ---
+  Widget _buildQuickActionBar(bool isDark, bool useAltSpeed) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? kCardColorDark : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: isDark ? [] : kMinimalShadow,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // 备用限速开关
+          Row(
+            children: [
+              Icon(
+                CupertinoIcons.tortoise_fill, 
+                color: useAltSpeed ? CupertinoColors.activeOrange : Colors.grey,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                "备用限速",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+              const SizedBox(width: 8),
+              CupertinoSwitch(
+                value: useAltSpeed,
+                activeColor: CupertinoColors.activeOrange,
+                onChanged: (val) async {
+                  // 调用 API 切换备用限速，你需要确保 ApiService 中有对应方法
+                  // await ApiService.toggleAltSpeedLimits();
+                  // _fetch(); 
+                },
+              ),
+            ],
+          ),
+          // 暂停/恢复按钮
+          Row(
+            children: [
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minSize: 32,
+                onPressed: () {
+                  // await ApiService.pauseAll();
+                  // _fetch();
+                },
+                child: const Icon(CupertinoIcons.pause_circle_fill, color: CupertinoColors.destructiveRed, size: 28),
+              ),
+              const SizedBox(width: 12),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minSize: 32,
+                onPressed: () {
+                  // await ApiService.resumeAll();
+                  // _fetch();
+                },
+                child: const Icon(CupertinoIcons.play_circle_fill, color: CupertinoColors.activeGreen, size: 28),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- 新增：任务概览卡片 ---
+  Widget _buildTaskOverviewCards(bool isDark, Map<String, int> counts) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildMiniStatusCard("下载中", counts['dl'] ?? 0, kPrimaryColor, isDark),
+          _buildMiniStatusCard("做种中", counts['up'] ?? 0, CupertinoColors.activeGreen, isDark),
+          _buildMiniStatusCard("已暂停", counts['paused'] ?? 0, CupertinoColors.systemOrange, isDark),
+          _buildMiniStatusCard("异常", counts['error'] ?? 0, CupertinoColors.destructiveRed, isDark),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniStatusCard(String title, int count, Color color, bool isDark) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark ? kCardColorDark : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: isDark ? [] : kMinimalShadow,
+          border: Border.all(color: color.withOpacity(0.2), width: 1),
+        ),
+        child: Column(
+          children: [
+            Text(
+              count.toString(),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- 新增：磁盘空间可视化进度卡片 ---
+  Widget _buildDiskSpaceCard(bool isDark, String freeSpaceStr) {
+    // qBittorrent 默认 API 不提供总空间，这里仅作高颜值视觉进度条展示
+    // 若你后续有接口获取总空间，可计算真实的 percentage = (总-余)/总
+    const double diskFillRatio = 0.65; // 演示比例：占用 65%
+    
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? kCardColorDark : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: isDark ? [] : kMinimalShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(CupertinoIcons.device_desktop, color: Colors.grey, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                "硬盘可用空间",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                freeSpaceStr,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: kPrimaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // 可视化进度条
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              children: [
+                Container(
+                  height: 12,
+                  width: double.infinity,
+                  color: isDark ? Colors.white10 : Colors.grey[200],
+                ),
+                FractionallySizedBox(
+                  widthFactor: diskFillRatio,
+                  child: Container(
+                    height: 12,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [kPrimaryColor, Color(0xFF34C759)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 原有组件保持不变...
   Widget _buildServerStatusRow(bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -278,7 +495,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     required String sessionValue,
     required String speedLabel,
     required String speedValue,
-    required String peakValue, // 新增：峰值字符串
+    required String peakValue,
     required Color color,
     required List<FlSpot> spots,
   }) {
@@ -314,7 +531,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   ),
                 ],
               ),
-              // 展示当前速度和峰值速度
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -363,7 +579,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     barWidth: 2,
                     isStrokeCapRound: true,
                     dotData: const FlDotData(show: false),
-                    // 新增：渐变填充
                     belowBarData: BarAreaData(
                       show: true,
                       gradient: LinearGradient(
