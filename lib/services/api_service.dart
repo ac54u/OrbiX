@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart'; // 引入 debugPrint
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import '../core/constants.dart'; 
@@ -13,6 +14,7 @@ class ApiService {
   static final Dio _dio = Dio();
   static bool _init = false;
 
+  /// 初始化 Dio 配置（处理 SSL 证书和日志拦截器）
   static void _ensureInit() {
     if (_init) return;
     _dio.httpClientAdapter = IOHttpClientAdapter(
@@ -29,13 +31,9 @@ class ApiService {
     _init = true;
   }
 
+  /// 获取当前服务器的基础 URL
   static Future<String?> _url({Map<String, dynamic>? overrideConfig}) async {
-    Map<String, dynamic>? server;
-    if (overrideConfig != null) {
-      server = overrideConfig;
-    } else {
-      server = await ServerManager.getCurrentServer();
-    }
+    Map<String, dynamic>? server = overrideConfig ?? await ServerManager.getCurrentServer();
     if (server == null) return null;
     final h = server['host'];
     final port = server['port'];
@@ -43,6 +41,7 @@ class ApiService {
     return "${useHttps ? 'https' : 'http'}://$h:$port";
   }
 
+  /// 获取 qBittorrent 请求所需的 Options（带 Cookie）
   static Future<Options> _getOptions() async {
     final u = await _url();
     final prefs = await SharedPreferences.getInstance();
@@ -53,6 +52,10 @@ class ApiService {
     );
   }
 
+  // ==========================================
+  // qBittorrent 身份验证
+  // ==========================================
+
   static Future<bool> testConnection(Map<String, dynamic> config) async {
     return await login(overrideConfig: config);
   }
@@ -62,8 +65,7 @@ class ApiService {
     try {
       final u = await _url(overrideConfig: overrideConfig);
       if (u == null) return false;
-      Map<String, dynamic>? server =
-          overrideConfig ?? await ServerManager.getCurrentServer();
+      Map<String, dynamic>? server = overrideConfig ?? await ServerManager.getCurrentServer();
       if (server == null) return false;
 
       final r = await _dio.post(
@@ -99,6 +101,10 @@ class ApiService {
     }
   }
 
+  // ==========================================
+  // qBittorrent 种子管理
+  // ==========================================
+
   static Future<List<dynamic>?> getTorrents({
     String filter = 'all',
     String? category,
@@ -112,11 +118,7 @@ class ApiService {
       if (category != null && category != 'all') query['category'] = category;
       if (tag != null && tag != 'all') query['tag'] = tag;
 
-      final r = await _dio.get(
-        '$u/api/v2/torrents/info',
-        queryParameters: query,
-        options: opts,
-      );
+      final r = await _dio.get('$u/api/v2/torrents/info', queryParameters: query, options: opts);
       if (r.data is String) return jsonDecode(r.data);
       return r.data;
     } catch (e) {
@@ -129,11 +131,7 @@ class ApiService {
     try {
       final u = await _url();
       final opts = await _getOptions();
-      final response = await _dio.get(
-        '$u/api/v2/torrents/files',
-        queryParameters: {'hash': hash},
-        options: opts,
-      );
+      final response = await _dio.get('$u/api/v2/torrents/files', queryParameters: {'hash': hash}, options: opts);
       return response.data as List<dynamic>;
     } catch (e) {
       return [];
@@ -148,21 +146,14 @@ class ApiService {
       final opts = await _getOptions();
       String endpoint = command;
       String body = 'hashes=$hash';
-
       if (command == 'setForceStart') body += '&value=true';
-      if (['topPrio', 'bottomPrio', 'increasePrio', 'decreasePrio']
-          .contains(command)) {
-        endpoint = command; 
-      }
-
+      
       final r = await _dio.post(
         '$u/api/v2/torrents/$endpoint',
         data: body,
         options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
       );
-
-      if (r.statusCode == 200) return null;
-      return "HTTP ${r.statusCode}";
+      return r.statusCode == 200 ? null : "HTTP ${r.statusCode}";
     } catch (e) {
       return "网络请求异常";
     }
@@ -172,14 +163,9 @@ class ApiService {
     _ensureInit();
     try {
       final u = await _url();
-      if (u == null) return;
       final opts = await _getOptions();
-      await _dio.post(
-        '$u/api/v2/transfer/toggleSpeedLimitsMode',
-        options: opts,
-      );
+      await _dio.post('$u/api/v2/transfer/toggleSpeedLimitsMode', options: opts);
     } catch (e) {
-      print("切换备用限速失败: $e");
       rethrow;
     }
   }
@@ -188,15 +174,9 @@ class ApiService {
     _ensureInit();
     try {
       final u = await _url();
-      if (u == null) return;
       final opts = await _getOptions();
-      await _dio.post(
-        '$u/api/v2/torrents/pause',
-        data: 'hashes=all',
-        options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
-      );
+      await _dio.post('$u/api/v2/torrents/pause', data: 'hashes=all', options: opts.copyWith(contentType: Headers.formUrlEncodedContentType));
     } catch (e) {
-      print("暂停所有任务失败: $e");
       rethrow;
     }
   }
@@ -205,15 +185,9 @@ class ApiService {
     _ensureInit();
     try {
       final u = await _url();
-      if (u == null) return;
       final opts = await _getOptions();
-      await _dio.post(
-        '$u/api/v2/torrents/resume',
-        data: 'hashes=all',
-        options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
-      );
+      await _dio.post('$u/api/v2/torrents/resume', data: 'hashes=all', options: opts.copyWith(contentType: Headers.formUrlEncodedContentType));
     } catch (e) {
-      print("恢复所有任务失败: $e");
       rethrow;
     }
   }
@@ -224,25 +198,14 @@ class ApiService {
       final u = await _url();
       final opts = await _getOptions();
       final body = 'hashes=$hash&deleteFiles=$deleteFiles';
-
-      final r = await _dio.post(
-        '$u/api/v2/torrents/delete',
-        data: body,
-        options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
-      );
-      if (r.statusCode == 200) return null;
-      return "HTTP ${r.statusCode}";
+      final r = await _dio.post('$u/api/v2/torrents/delete', data: body, options: opts.copyWith(contentType: Headers.formUrlEncodedContentType));
+      return r.statusCode == 200 ? null : "HTTP ${r.statusCode}";
     } catch (e) {
       return "网络请求异常";
     }
   }
 
-  static Future<bool> addTorrent(
-    String urls, {
-    String? savePath,
-    String? category,
-    String? tags,
-  }) async {
+  static Future<bool> addTorrent(String urls, {String? savePath, String? category, String? tags}) async {
     _ensureInit();
     try {
       final u = await _url();
@@ -253,7 +216,6 @@ class ApiService {
         if (category != null) 'category': category,
         if (tags != null) 'tags': tags,
       });
-
       await _dio.post('$u/api/v2/torrents/add', data: formData, options: opts);
       return true;
     } catch (e) {
@@ -261,25 +223,18 @@ class ApiService {
     }
   }
 
-  static Future<bool> addTorrentFile(
-    String filePath, {
-    String? savePath,
-    String? category,
-    String? tags,
-  }) async {
+  static Future<bool> addTorrentFile(String filePath, {String? savePath, String? category, String? tags}) async {
     _ensureInit();
     try {
       final u = await _url();
       final opts = await _getOptions();
       String fileName = filePath.split('/').last;
-
       FormData formData = FormData.fromMap({
         'torrents': await MultipartFile.fromFile(filePath, filename: fileName),
         if (savePath != null) 'savepath': savePath,
         if (category != null) 'category': category,
         if (tags != null) 'tags': tags,
       });
-
       await _dio.post('$u/api/v2/torrents/add', data: formData, options: opts);
       return true;
     } catch (e) {
@@ -287,24 +242,22 @@ class ApiService {
     }
   }
 
+  // ==========================================
+  // qBittorrent 配置与状态
+  // ==========================================
+
   static Future<bool> setPreferences({required String savePath}) async {
     _ensureInit();
     try {
       final u = await _url();
       final opts = await _getOptions();
-      final data = {
-        'json': jsonEncode({'save_path': savePath})
-      };
-      
       final response = await _dio.post(
         '$u/api/v2/app/setPreferences',
-        data: FormData.fromMap(data),
+        data: FormData.fromMap({'json': jsonEncode({'save_path': savePath})}),
         options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
       );
-      
       return response.statusCode == 200;
     } catch (e) {
-      print('Set preferences error: $e');
       return false;
     }
   }
@@ -357,61 +310,17 @@ class ApiService {
     }
   }
 
-  static Future<bool> setTransferLimit(
-      {int? dlLimitBytes, int? upLimitBytes}) async {
+  static Future<bool> setTransferLimit({int? dlLimitBytes, int? upLimitBytes}) async {
     _ensureInit();
     try {
       final u = await _url();
       final opts = await _getOptions();
       final ct = opts.copyWith(contentType: Headers.formUrlEncodedContentType);
-
-      if (dlLimitBytes != null) {
-        await _dio.post(
-          '$u/api/v2/transfer/setDownloadLimit',
-          data: 'limit=$dlLimitBytes',
-          options: ct,
-        );
-      }
-      if (upLimitBytes != null) {
-        await _dio.post(
-          '$u/api/v2/transfer/setUploadLimit',
-          data: 'limit=$upLimitBytes',
-          options: ct,
-        );
-      }
+      if (dlLimitBytes != null) await _dio.post('$u/api/v2/transfer/setDownloadLimit', data: 'limit=$dlLimitBytes', options: ct);
+      if (upLimitBytes != null) await _dio.post('$u/api/v2/transfer/setUploadLimit', data: 'limit=$upLimitBytes', options: ct);
       return true;
     } catch (e) {
       return false;
-    }
-  }
-
-  static Future<List<dynamic>?> getTorrentFiles(String hash) async {
-    _ensureInit();
-    try {
-      final u = await _url();
-      final opts = await _getOptions();
-      final r = await _dio.get(
-        '$u/api/v2/torrents/files?hash=$hash',
-        options: opts,
-      );
-      return r.data;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  static Future<Map<String, dynamic>?> getTorrentPeers(String hash) async {
-    _ensureInit();
-    try {
-      final u = await _url();
-      final opts = await _getOptions();
-      final r = await _dio.get(
-        '$u/api/v2/sync/torrentPeers?hash=$hash',
-        options: opts,
-      );
-      return r.data;
-    } catch (e) {
-      return null;
     }
   }
 
@@ -432,63 +341,45 @@ class ApiService {
     try {
       final u = await _url();
       final opts = await _getOptions();
-      final r = await _dio.get(
-        '$u/api/v2/log/main',
-        queryParameters: {
-          'normal': 'true',
-          'info': 'true',
-          'warning': 'true',
-          'critical': 'true',
-          'last_known_id': -1
-        },
-        options: opts,
-      );
+      final r = await _dio.get('$u/api/v2/log/main', queryParameters: {
+        'normal': 'true', 'info': 'true', 'warning': 'true', 'critical': 'true', 'last_known_id': -1
+      }, options: opts);
       return r.data is List ? r.data : [];
     } catch (e) {
       return [];
     }
   }
 
+  // ==========================================
+  // Prowlarr 搜刮器
+  // ==========================================
+
   static Future<List<dynamic>> searchProwlarr(String query) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('prowlarr_url');
     final key = p.getString('prowlarr_key');
-
     if (url == null || key == null || key.isEmpty) throw "请先在设置中配置 Prowlarr";
-
     try {
-      final r = await _dio.get(
-        '$url/api/v1/search',
-        queryParameters: {'query': query, 'type': 'search'},
-        options: Options(headers: {'X-Api-Key': key}),
-      );
+      final r = await _dio.get('$url/api/v1/search', queryParameters: {'query': query, 'type': 'search'}, options: Options(headers: {'X-Api-Key': key}));
       return r.data;
     } catch (e) {
       throw "Prowlarr 连接失败";
     }
   }
 
-  static Future<Map<String, dynamic>?> searchTMDB(
-    String title, {
-    String? year,
-  }) async {
+  // ==========================================
+  // TMDB 电影资料
+  // ==========================================
+
+  static Future<Map<String, dynamic>?> searchTMDB(String title, {String? year}) async {
     final p = await SharedPreferences.getInstance();
     String key = p.getString('tmdb_key') ?? '';
     if (key.isEmpty) key = kDefaultTmdbKey;
-
     try {
-      final r = await _dio.get(
-        'https://api.themoviedb.org/3/search/movie',
-        queryParameters: {
-          'api_key': key,
-          'query': title,
-          'language': 'zh-CN',
-          if (year != null) 'year': year,
-        },
-      );
-      if (r.data['results'] != null && (r.data['results'] as List).isNotEmpty) {
-        return r.data['results'][0];
-      }
+      final r = await _dio.get('https://api.themoviedb.org/3/search/movie', queryParameters: {
+        'api_key': key, 'query': title, 'language': 'zh-CN', if (year != null) 'year': year,
+      });
+      if (r.data['results'] != null && (r.data['results'] as List).isNotEmpty) return r.data['results'][0];
     } catch (e) {
       return null;
     }
@@ -499,129 +390,106 @@ class ApiService {
     final p = await SharedPreferences.getInstance();
     String key = p.getString('tmdb_key') ?? '';
     if (key.isEmpty) key = kDefaultTmdbKey;
-
     try {
-      final r = await _dio.get(
-        'https://api.themoviedb.org/3/movie/$id/credits',
-        queryParameters: {'api_key': key},
-      );
+      final r = await _dio.get('https://api.themoviedb.org/3/movie/$id/credits', queryParameters: {'api_key': key});
       return (r.data['cast'] as List).take(10).toList();
     } catch (e) {
       return [];
     }
   }
 
-  // ✅ 新增：在 Radarr 中搜索电影资料
+  // ==========================================
+  // Radarr 自动化管理
+  // ==========================================
+
   static Future<List<dynamic>> searchRadarr(String query) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('radarr_url');
     final key = p.getString('radarr_key');
-
-    if (url == null || key == null || key.isEmpty) throw "请先在设置中配置 Radarr 地址和 Key";
-
+    if (url == null || key == null || key.isEmpty) throw "请先在设置中配置 Radarr";
     try {
-      final r = await _dio.get(
-        '$url/api/v3/movie/lookup',
-        queryParameters: {'term': query},
-        options: Options(headers: {'X-Api-Key': key}),
-      );
+      final r = await _dio.get('$url/api/v3/movie/lookup', queryParameters: {'term': query}, options: Options(headers: {'X-Api-Key': key}));
       return r.data;
     } catch (e) {
       throw "Radarr 连接失败: $e";
     }
   }
 
-  // --- 新增：Emby 联动 API ---
-
-  /// 利用 TMDB ID 精准查询 Emby 中是否已有该电影
-  static Future<String?> checkMovieInEmby(String tmdbId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString('emby_url') ?? '';
-    final key = prefs.getString('emby_api_key') ?? '';
-
-    if (url.isEmpty || key.isEmpty) return null;
-
-    final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
-    
-    // AnyProviderIdEquals 是 Emby 非常好用的高级查询参数，直接匹配 TMDB ID，绝不误判
-    final uri = Uri.parse('$cleanUrl/emby/Items?AnyProviderIdEquals=$tmdbId&Recursive=true&IncludeItemTypes=Movie&api_key=$key');
-
-    try {
-      final response = await http.get(uri);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        // 如果查到了，返回 Emby 内部的 ItemId
-        if (data['TotalRecordCount'] != null && data['TotalRecordCount'] > 0) {
-          return data['Items'][0]['Id']; 
-        }
-      }
-    } catch (e) {
-      print("Check Emby error: $e");
-    }
-    return null; // 没查到或者报错都返回 null
-  }
-
-  /// 唤醒 Emby 播放
-  static Future<void> playInEmby(String itemId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString('emby_url') ?? '';
-    final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
-
-    // 拼接 Emby Web 端的播放地址
-    // 在 iOS 上，如果你安装了 Emby 官方 App，系统会自动拦截这个链接拉起 App (Universal Link)
-    // 如果没装 App，也会在浏览器里直接打开播放页
-    final playUrl = Uri.parse('$cleanUrl/web/index.html#!/item/item.html?id=$itemId');
-    
-    if (await canLaunchUrl(playUrl)) {
-      await launchUrl(playUrl, mode: LaunchMode.externalApplication);
-    } else {
-      throw Exception("无法拉起 Emby");
-    }
-  }
-
-  // ✅ 新增：将电影添加到 Radarr 监控并自动搜索下载
   static Future<bool> addMovieToRadarr(Map<String, dynamic> movieData) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('radarr_url');
     final key = p.getString('radarr_key');
-
     try {
-      final profilesResp = await _dio.get(
-        '$url/api/v3/qualityprofile',
-        options: Options(headers: {'X-Api-Key': key}),
-      );
-      final foldersResp = await _dio.get(
-        '$url/api/v3/rootfolder',
-        options: Options(headers: {'X-Api-Key': key}),
-      );
-
-      if ((profilesResp.data as List).isEmpty || (foldersResp.data as List).isEmpty) {
-        throw "Radarr 端缺少基础配置(质量配置或根目录)";
-      }
-
-      final profileId = profilesResp.data[0]['id'];
-      final rootPath = foldersResp.data[0]['path'];
-
+      final profilesResp = await _dio.get('$url/api/v3/qualityprofile', options: Options(headers: {'X-Api-Key': key}));
+      final foldersResp = await _dio.get('$url/api/v3/rootfolder', options: Options(headers: {'X-Api-Key': key}));
+      if ((profilesResp.data as List).isEmpty || (foldersResp.data as List).isEmpty) throw "Radarr 缺少基础配置";
       final payload = {
-        ...movieData,
-        'qualityProfileId': profileId,
-        'rootFolderPath': rootPath,
-        'monitored': true,
-        'addOptions': {
-          'searchForMovie': true 
-        }
+        ...movieData, 'qualityProfileId': profilesResp.data[0]['id'], 'rootFolderPath': foldersResp.data[0]['path'],
+        'monitored': true, 'addOptions': {'searchForMovie': true}
       };
-
-      final r = await _dio.post(
-        '$url/api/v3/movie',
-        data: payload,
-        options: Options(headers: {'X-Api-Key': key}),
-      );
-
+      final r = await _dio.post('$url/api/v3/movie', data: payload, options: Options(headers: {'X-Api-Key': key}));
       return r.statusCode == 201 || r.statusCode == 200;
     } catch (e) {
-      print("添加至 Radarr 失败: $e");
       return false;
+    }
+  }
+
+  // ==========================================
+  // Emby 媒体中心联动
+  // ==========================================
+
+  /// 利用 TMDB ID 精准查询 Emby 中是否已有该电影
+  static Future<String?> checkMovieInEmby(String tmdbId) async {
+    _ensureInit();
+    final prefs = await SharedPreferences.getInstance();
+    String url = prefs.getString('emby_url') ?? '';
+    final key = prefs.getString('emby_api_key') ?? '';
+
+    if (url.isEmpty || key.isEmpty) return null;
+    if (url.endsWith('/')) url = url.substring(0, url.length - 1);
+
+    try {
+      // 统一使用 _dio 发起请求，确保拦截器和 SSL 证书配置生效
+      final r = await _dio.get(
+        '$url/emby/Items',
+        queryParameters: {
+          'AnyProviderIdEquals': tmdbId,
+          'Recursive': 'true',
+          'IncludeItemTypes': 'Movie',
+          'api_key': key,
+        },
+      );
+
+      if (r.statusCode == 200) {
+        final data = r.data;
+        if (data['TotalRecordCount'] != null && data['TotalRecordCount'] > 0) {
+          return data['Items'][0]['Id'].toString();
+        }
+      }
+    } catch (e) {
+      debugPrint("Check Emby Error: $e");
+    }
+    return null;
+  }
+
+  /// 唤醒外部 Emby App 播放
+  static Future<void> playInEmby(String itemId) async {
+    final prefs = await SharedPreferences.getInstance();
+    String url = prefs.getString('emby_url') ?? '';
+    if (url.isEmpty) return;
+    if (url.endsWith('/')) url = url.substring(0, url.length - 1);
+
+    // 拼接 Web 端播放地址，iOS 会自动识别 Universal Link 拉起 App
+    final playUrl = Uri.parse('$url/web/index.html#!/item/item.html?id=$itemId');
+    
+    try {
+      if (await canLaunchUrl(playUrl)) {
+        await launchUrl(playUrl, mode: LaunchMode.externalApplication);
+      } else {
+        throw "无法拉起播放器";
+      }
+    } catch (e) {
+      debugPrint("Play in Emby Error: $e");
     }
   }
 }
