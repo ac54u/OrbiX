@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../core/utils.dart'; // 🚀 引入 Utils 以便在出错时弹出 Toast
+import '../core/utils.dart'; 
 
 class MediaItem {
   final String title;
@@ -65,25 +65,31 @@ class ArrApiService {
         if (radarrRes.statusCode == 200) {
           final List radarrData = jsonDecode(radarrRes.body);
           for (var item in radarrData) {
+            
+            // 🚀 防弹解析 1：安全提取海报
             String poster = '';
-            if (item['images'] != null && item['images'].isNotEmpty) {
-              var posterImg = item['images'].firstWhere((img) => img['coverType'] == 'poster', orElse: () => null);
-              if (posterImg != null) {
-                poster = _buildImageUrl(posterImg['url'], cleanUrl, radarrApiKey);
+            if (item['images'] is List) {
+              for (var img in item['images']) {
+                if (img is Map && img['coverType'] == 'poster' && img['url'] != null) {
+                  poster = _buildImageUrl(img['url'].toString(), cleanUrl, radarrApiKey);
+                  break; // 找到一张就行，安全退出循环
+                }
               }
             }
             
-            String dateStr = item['digitalRelease'] ?? item['physicalRelease'] ?? item['inCinemas'] ?? startStr;
+            // 🚀 防弹解析 2：安全解析日期，失败则退回当前时间
+            String dateStr = item['digitalRelease']?.toString() ?? 
+                             item['physicalRelease']?.toString() ?? 
+                             item['inCinemas']?.toString() ?? 
+                             startStr;
+            DateTime parsedDate = DateTime.tryParse(dateStr)?.toLocal() ?? DateTime.now();
             
-            // 🚀 极其严谨的空值与类型保护
-            int rTime = 0;
-            if (item['runtime'] != null && item['runtime'] is num) {
-              rTime = (item['runtime'] as num).toInt();
-            }
+            // 🚀 防弹解析 3：安全转换时长
+            int rTime = int.tryParse(item['runtime']?.toString() ?? '0') ?? 0;
             
             allItems.add(MediaItem(
               title: item['title']?.toString() ?? '未知电影',
-              date: DateTime.parse(dateStr).toLocal(),
+              date: parsedDate,
               type: 'Movie',
               posterUrl: poster,
               status: item['hasFile'] == true ? '已下载' : '等待中',
@@ -93,11 +99,12 @@ class ArrApiService {
             ));
           }
         } else {
-          Utils.showToast("Radarr 接口报错: ${radarrRes.statusCode}");
+          Utils.showToast("Radarr: HTTP ${radarrRes.statusCode}");
         }
       } catch (e) {
         debugPrint("获取 Radarr 日历失败: $e");
-        Utils.showToast("Radarr 解析异常，请查看日志");
+        // 🚀 把具体的错误也抛出来，如果再报错，截个图就能一秒定位
+        Utils.showToast("Radarr 错误: ${e.toString().substring(0, e.toString().length > 30 ? 30 : e.toString().length)}");
       }
     }
 
@@ -115,41 +122,48 @@ class ArrApiService {
         if (sonarrRes.statusCode == 200) {
           final List sonarrData = jsonDecode(sonarrRes.body);
           for (var item in sonarrData) {
+            
+            // 🚀 防弹解析：安全的 Map 检查
+            bool hasSeriesMap = item['series'] is Map;
+
             String poster = '';
-            // 🚀 安全调用符 ? 防止 series 为 null
-            if (item['series'] != null && item['series']['images'] != null) {
-               var posterImg = item['series']['images'].firstWhere((img) => img['coverType'] == 'poster', orElse: () => null);
-               if (posterImg != null) {
-                 poster = _buildImageUrl(posterImg['url'], cleanUrl, sonarrApiKey);
-               }
+            if (hasSeriesMap && item['series']['images'] is List) {
+              for (var img in item['series']['images']) {
+                if (img is Map && img['coverType'] == 'poster' && img['url'] != null) {
+                  poster = _buildImageUrl(img['url'].toString(), cleanUrl, sonarrApiKey);
+                  break;
+                }
+              }
             }
 
             String s = (item['seasonNumber'] ?? 0).toString().padLeft(2, '0');
             String e = (item['episodeNumber'] ?? 0).toString().padLeft(2, '0');
-            String seriesTitle = item['series']?['title']?.toString() ?? '未知剧集';
+            String seriesTitle = hasSeriesMap ? (item['series']['title']?.toString() ?? '未知剧集') : '未知剧集';
 
-            int rTime = 0;
-            if (item['series'] != null && item['series']['runtime'] is num) {
-              rTime = (item['series']['runtime'] as num).toInt();
-            }
+            String dateStr = item['airDateUtc']?.toString() ?? startStr;
+            DateTime parsedDate = DateTime.tryParse(dateStr)?.toLocal() ?? DateTime.now();
+
+            int rTime = hasSeriesMap ? (int.tryParse(item['series']['runtime']?.toString() ?? '0') ?? 0) : 0;
+            String network = hasSeriesMap ? (item['series']['network']?.toString() ?? '未知平台') : '未知平台';
+            String overview = item['overview']?.toString() ?? (hasSeriesMap ? item['series']['overview']?.toString() : null) ?? '该集暂无简介';
 
             allItems.add(MediaItem(
               title: "$seriesTitle - S${s}E${e}",
-              date: DateTime.parse(item['airDateUtc']).toLocal(),
+              date: parsedDate,
               type: 'Episode',
               posterUrl: poster,
               status: item['hasFile'] == true ? '已下载' : '待首播',
-              overview: item['overview']?.toString() ?? item['series']?['overview']?.toString() ?? '该集暂无简介',
+              overview: overview,
               runtime: rTime,
-              network: item['series']?['network']?.toString() ?? '未知平台',
+              network: network,
             ));
           }
         } else {
-          Utils.showToast("Sonarr 接口报错: ${sonarrRes.statusCode}");
+          Utils.showToast("Sonarr: HTTP ${sonarrRes.statusCode}");
         }
       } catch (e) {
         debugPrint("获取 Sonarr 日历失败: $e");
-        Utils.showToast("Sonarr 解析异常，请查看日志");
+        Utils.showToast("Sonarr 错误: ${e.toString().substring(0, e.toString().length > 30 ? 30 : e.toString().length)}");
       }
     }
 
