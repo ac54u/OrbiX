@@ -1,80 +1,69 @@
-//
-//  OrbixWidgetLiveActivity.swift
-//  OrbixWidget
-//
-//  Created by mac on 2026/3/21.
-//
-
 import ActivityKit
 import WidgetKit
 import SwiftUI
 
-struct OrbixWidgetAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
-        // Dynamic stateful properties about your activity go here!
-        var emoji: String
-    }
 
-    // Fixed non-changing properties about your activity go here!
-    var name: String
-}
 
+// 2. 灵动岛 UI 布局
 struct OrbixWidgetLiveActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: OrbixWidgetAttributes.self) { context in
-            // Lock screen/banner UI goes here
+        ActivityConfiguration(for: DownloadAttributes.self) { context in
+            // 锁屏界面和通知中心的 UI
             VStack {
-                Text("Hello \(context.state.emoji)")
+                HStack {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.blue)
+                    Text("正在下载: \(context.attributes.movieName)")
+                        .font(.headline)
+                    Spacer()
+                    Text(context.state.speed)
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
+                ProgressView(value: context.state.progress)
+                    .tint(.blue)
             }
-            .activityBackgroundTint(Color.cyan)
-            .activitySystemActionForegroundColor(Color.black)
+            .padding()
+            .activityBackgroundTint(Color.black.opacity(0.8))
+            .activitySystemActionForegroundColor(Color.white)
 
         } dynamicIsland: { context in
+            // 顶部灵动岛的 UI
             DynamicIsland {
-                // Expanded UI goes here.  Compose the expanded UI through
-                // various regions, like leading/trailing/center/bottom
+                // 灵动岛长按展开后的 UI
                 DynamicIslandExpandedRegion(.leading) {
-                    Text("Leading")
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.blue)
+                        .font(.title2)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    Text(context.attributes.movieName)
+                        .lineLimit(1)
+                        .font(.headline)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text("Trailing")
+                    Text(context.state.speed)
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text("Bottom \(context.state.emoji)")
-                    // more content
+                    ProgressView(value: context.state.progress)
+                        .tint(.blue)
+                        .padding(.top, 5)
                 }
             } compactLeading: {
-                Text("L")
+                // 灵动岛收起时的左侧 UI
+                Image(systemName: "arrow.down.circle.fill")
+                    .foregroundColor(.blue)
             } compactTrailing: {
-                Text("T \(context.state.emoji)")
+                // 灵动岛收起时的右侧 UI
+                Text("\(Int(context.state.progress * 100))%")
+                    .font(.caption2)
             } minimal: {
-                Text(context.state.emoji)
+                // 多个灵动岛时的极简 UI
+                Image(systemName: "arrow.down")
+                    .foregroundColor(.blue)
             }
-            .widgetURL(URL(string: "http://www.apple.com"))
-            .keylineTint(Color.red)
         }
     }
-}
-
-extension OrbixWidgetAttributes {
-    fileprivate static var preview: OrbixWidgetAttributes {
-        OrbixWidgetAttributes(name: "World")
-    }
-}
-
-extension OrbixWidgetAttributes.ContentState {
-    fileprivate static var smiley: OrbixWidgetAttributes.ContentState {
-        OrbixWidgetAttributes.ContentState(emoji: "😀")
-     }
-     
-     fileprivate static var starEyes: OrbixWidgetAttributes.ContentState {
-         OrbixWidgetAttributes.ContentState(emoji: "🤩")
-     }
-}
-
-#Preview("Notification", as: .content, using: OrbixWidgetAttributes.preview) {
-   OrbixWidgetLiveActivity()
-} contentStates: {
-    OrbixWidgetAttributes.ContentState.smiley
-    OrbixWidgetAttributes.ContentState.starEyes
 }
