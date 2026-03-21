@@ -1,18 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart'; 
+import 'package:shared_preferences/shared_preferences.dart';
+import '../core/utils.dart'; // 🚀 引入 Utils 以便在出错时弹出 Toast
 
-// 🚀 1. 扩充了数据模型，加入大量影视资讯参数
 class MediaItem {
   final String title;
   final DateTime date;
   final String type; 
   final String posterUrl;
   final String status;
-  final String overview; // 剧情简介
-  final int runtime;     // 时长（分钟）
-  final String network;  // 出品方或电视网
+  final String overview; 
+  final int runtime;     
+  final String network;  
 
   MediaItem({
     required this.title,
@@ -28,7 +28,6 @@ class MediaItem {
 
 class ArrApiService {
   
-  // 🚀 辅助方法：完美修复海报 URL 的拼接逻辑
   static String _buildImageUrl(String rawUrl, String baseUrl, String apiKey) {
     if (rawUrl.isEmpty) return '';
     String fullUrl = rawUrl.startsWith('http') ? rawUrl : '$baseUrl$rawUrl';
@@ -76,20 +75,29 @@ class ArrApiService {
             
             String dateStr = item['digitalRelease'] ?? item['physicalRelease'] ?? item['inCinemas'] ?? startStr;
             
+            // 🚀 极其严谨的空值与类型保护
+            int rTime = 0;
+            if (item['runtime'] != null && item['runtime'] is num) {
+              rTime = (item['runtime'] as num).toInt();
+            }
+            
             allItems.add(MediaItem(
-              title: item['title'] ?? '未知电影',
+              title: item['title']?.toString() ?? '未知电影',
               date: DateTime.parse(dateStr).toLocal(),
               type: 'Movie',
               posterUrl: poster,
               status: item['hasFile'] == true ? '已下载' : '等待中',
-              overview: item['overview'] ?? '暂无剧情简介',
-              runtime: item['runtime'] ?? 0,
-              network: item['studio'] ?? '未知厂牌',
+              overview: item['overview']?.toString() ?? '暂无剧情简介',
+              runtime: rTime,
+              network: item['studio']?.toString() ?? '未知厂牌',
             ));
           }
+        } else {
+          Utils.showToast("Radarr 接口报错: ${radarrRes.statusCode}");
         }
       } catch (e) {
         debugPrint("获取 Radarr 日历失败: $e");
+        Utils.showToast("Radarr 解析异常，请查看日志");
       }
     }
 
@@ -108,6 +116,7 @@ class ArrApiService {
           final List sonarrData = jsonDecode(sonarrRes.body);
           for (var item in sonarrData) {
             String poster = '';
+            // 🚀 安全调用符 ? 防止 series 为 null
             if (item['series'] != null && item['series']['images'] != null) {
                var posterImg = item['series']['images'].firstWhere((img) => img['coverType'] == 'poster', orElse: () => null);
                if (posterImg != null) {
@@ -115,25 +124,32 @@ class ArrApiService {
                }
             }
 
-            // 格式化季数和集数：例如 S01E02
-            String s = item['seasonNumber'].toString().padLeft(2, '0');
-            String e = item['episodeNumber'].toString().padLeft(2, '0');
-            String epTitle = item['title'] ?? '';
+            String s = (item['seasonNumber'] ?? 0).toString().padLeft(2, '0');
+            String e = (item['episodeNumber'] ?? 0).toString().padLeft(2, '0');
+            String seriesTitle = item['series']?['title']?.toString() ?? '未知剧集';
+
+            int rTime = 0;
+            if (item['series'] != null && item['series']['runtime'] is num) {
+              rTime = (item['series']['runtime'] as num).toInt();
+            }
 
             allItems.add(MediaItem(
-              title: "${item['series']['title']} - S${s}E${e}",
+              title: "$seriesTitle - S${s}E${e}",
               date: DateTime.parse(item['airDateUtc']).toLocal(),
               type: 'Episode',
               posterUrl: poster,
               status: item['hasFile'] == true ? '已下载' : '待首播',
-              overview: item['overview'] ?? item['series']['overview'] ?? '该集暂无简介',
-              runtime: item['series']['runtime'] ?? 0,
-              network: item['series']['network'] ?? '未知平台',
+              overview: item['overview']?.toString() ?? item['series']?['overview']?.toString() ?? '该集暂无简介',
+              runtime: rTime,
+              network: item['series']?['network']?.toString() ?? '未知平台',
             ));
           }
+        } else {
+          Utils.showToast("Sonarr 接口报错: ${sonarrRes.statusCode}");
         }
       } catch (e) {
         debugPrint("获取 Sonarr 日历失败: $e");
+        Utils.showToast("Sonarr 解析异常，请查看日志");
       }
     }
 
