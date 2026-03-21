@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'api_service.dart';
-import '../core/utils.dart'; // 引入 Utils 以便使用 showToast
+import '../core/utils.dart'; // 确保引入了 Utils
 
 class LiveActivityService {
   static const MethodChannel _channel = MethodChannel('com.orbix/live_activity');
@@ -16,7 +16,6 @@ class LiveActivityService {
         _startTracking(); // 启动后台轮询
       }
     } on PlatformException catch (e) {
-      // ⚠️ 第三板斧：把原生 iOS 的具体报错弹在手机屏幕上！
       Utils.showToast("灵动岛报错: ${e.message}");
       debugPrint("灵动岛点火失败: ${e.message}");
     } catch (e) {
@@ -25,12 +24,13 @@ class LiveActivityService {
     }
   }
 
-  /// 2. ⚡️ 手动向原生发送最新网速
-  static Future<void> update(double progress, String speed) async {
+  /// 2. ⚡️ 向原生发送最新数据 (增加 eta 参数)
+  static Future<void> update(double progress, String speed, String eta) async {
     try {
       await _channel.invokeMethod('updateProgress', {
         'progress': progress,
         'speed': speed,
+        'eta': eta, // 🚀 发送剩余时间
       });
     } catch (e) {
       debugPrint("灵动岛更新失败: $e");
@@ -56,21 +56,32 @@ class LiveActivityService {
         final torrents = await ApiService.getTorrents(filter: 'downloading');
         
         if (torrents == null || torrents.isEmpty) {
-          // 如果没有下载任务了，自动收起灵动岛
           stop();
           return;
         }
 
-        // 简单策略：如果有多个任务，取下载速度最快的一个展示在灵动岛上
+        // 取下载速度最快的一个任务
         torrents.sort((a, b) => (b['dlspeed'] ?? 0).compareTo(a['dlspeed'] ?? 0));
         final activeTask = torrents.first;
 
-        // 计算进度和格式化网速
+        // 计算进度和网速
         double progress = (activeTask['progress'] ?? 0).toDouble();
         String speedStr = "${Utils.formatBytes(activeTask['dlspeed'] ?? 0)}/s";
+        
+        // 🚀 核心升级：解析 qBittorrent 返回的 ETA (剩余时间秒数)
+        int etaRaw = activeTask['eta'] ?? 8640000;
+        String etaStr;
+        if (etaRaw >= 8640000 || etaRaw < 0) {
+          etaStr = "计算中...";
+        } else {
+          // 格式化为：剩余 X分Y秒
+          int minutes = etaRaw ~/ 60;
+          int seconds = etaRaw % 60;
+          etaStr = "剩余 $minutes分$seconds秒";
+        }
 
-        // 把最新数据推给 iOS 原生
-        update(progress, speedStr);
+        // 把进度、网速、剩余时间一起推给 iOS 原生
+        update(progress, speedStr, etaStr);
 
         // 如果进度达到 100%，结束
         if (progress >= 1.0) {

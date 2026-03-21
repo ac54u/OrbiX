@@ -33,10 +33,14 @@ import ActivityKit
               }
               
           case "updateProgress":
+              // 🚀 新增：在这里解析 Flutter 传过来的 eta (剩余时间)
               if let args = call.arguments as? [String: Any],
                  let progress = args["progress"] as? Double,
-                 let speed = args["speed"] as? String {
-                  LiveActivityManager.shared.updateProgress(progress: progress, speed: speed)
+                 let speed = args["speed"] as? String,
+                 let eta = args["eta"] as? String {
+                  
+                  // 🚀 把 eta 传给管理器
+                  LiveActivityManager.shared.updateProgress(progress: progress, speed: speed, eta: eta)
                   result(true)
               } else {
                   result(FlutterError(code: "INVALID_ARGS", message: "参数错误", details: nil))
@@ -69,7 +73,8 @@ class LiveActivityManager {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         
         let attributes = DownloadAttributes(movieName: movieName)
-        let initialState = DownloadAttributes.ContentState(progress: 0.0, speed: "启动中...")
+        // 🚀 新增：加上初始的 eta 状态
+        let initialState = DownloadAttributes.ContentState(progress: 0.0, speed: "启动中...", eta: "计算中...")
         
         do {
             currentActivity = try Activity.request(
@@ -82,16 +87,18 @@ class LiveActivityManager {
         }
     }
 
-    func updateProgress(progress: Double, speed: String) {
+    // 🚀 新增：加上 eta 参数
+    func updateProgress(progress: Double, speed: String, eta: String) {
         Task {
-            let updatedState = DownloadAttributes.ContentState(progress: progress, speed: speed)
+            let updatedState = DownloadAttributes.ContentState(progress: progress, speed: speed, eta: eta)
             await currentActivity?.update(using: updatedState)
         }
     }
 
     func stopDownload() {
         Task {
-            let finalState = DownloadAttributes.ContentState(progress: 1.0, speed: "下载完成")
+            // 🚀 新增：下载完成时的 eta 状态
+            let finalState = DownloadAttributes.ContentState(progress: 1.0, speed: "下载完成", eta: "0秒")
             await currentActivity?.end(using: finalState, dismissalPolicy: .default)
             currentActivity = nil
         }
