@@ -40,7 +40,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _radarrUrlCtrl = TextEditingController();
   final _radarrKeyCtrl = TextEditingController();
   
-  // 新增：Emby 相关控制器
+  // 🚀 新增：Sonarr 相关控制器
+  final _sonarrUrlCtrl = TextEditingController();
+  final _sonarrKeyCtrl = TextEditingController();
+
+  // Emby 相关控制器
   final _embyUrlCtrl = TextEditingController();
   final _embyKeyCtrl = TextEditingController();
   final _tmdbKeyCtrl = TextEditingController();
@@ -61,6 +65,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _prowlarrKeyCtrl.dispose();
     _radarrUrlCtrl.dispose();
     _radarrKeyCtrl.dispose();
+    _sonarrUrlCtrl.dispose(); // 🚀 销毁 Sonarr 控制器
+    _sonarrKeyCtrl.dispose();
     _embyUrlCtrl.dispose();
     _embyKeyCtrl.dispose();
     _tmdbKeyCtrl.dispose();
@@ -110,6 +116,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _radarrUrlCtrl.text = prefs.getString('radarr_url') ?? '';
       _radarrKeyCtrl.text = prefs.getString('radarr_key') ?? '';
 
+      // 🚀 读取 Sonarr 配置
+      _sonarrUrlCtrl.text = prefs.getString('sonarr_url') ?? '';
+      _sonarrKeyCtrl.text = prefs.getString('sonarr_key') ?? '';
+
       // 读取 Emby 配置
       _embyUrlCtrl.text = prefs.getString('emby_url') ?? '';
       _embyKeyCtrl.text = prefs.getString('emby_api_key') ?? '';
@@ -140,6 +150,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await p.setString('prowlarr_key', _prowlarrKeyCtrl.text);
     await p.setString('radarr_url', _radarrUrlCtrl.text);
     await p.setString('radarr_key', _radarrKeyCtrl.text);
+    
+    // 🚀 保存 Sonarr 配置
+    await p.setString('sonarr_url', _sonarrUrlCtrl.text);
+    await p.setString('sonarr_key', _sonarrKeyCtrl.text);
+
     // 保存 Emby 配置
     await p.setString('emby_url', _embyUrlCtrl.text);
     await p.setString('emby_api_key', _embyKeyCtrl.text);
@@ -233,7 +248,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // 新增的 Emby 配置区域
+                    // 🚀 新增的 Sonarr 配置区域
+                    Text(
+                      "Sonarr 地址",
+                      style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
+                    ),
+                    CupertinoTextField(
+                      controller: _sonarrUrlCtrl,
+                      placeholder: "http://192.168.1.x:8989",
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Sonarr API Key",
+                      style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
+                    ),
+                    CupertinoTextField(
+                      controller: _sonarrKeyCtrl,
+                      placeholder: "Sonarr 设置获取",
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Emby 配置区域
                     Text(
                       "Emby 地址",
                       style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
@@ -514,7 +551,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               color: isDark ? Colors.white : Colors.black,
                             ),
                           ),
-                          subtitle: Text("配置 Prowlarr, Radarr & Emby", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
+                          subtitle: Text("配置 Prowlarr, Radarr, Sonarr & Emby", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
                           leading: const Icon(
                             CupertinoIcons.search_circle_fill,
                             color: Colors.purple,
