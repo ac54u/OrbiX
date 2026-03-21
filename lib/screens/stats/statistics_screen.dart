@@ -16,15 +16,11 @@ class StatisticsScreen extends StatefulWidget {
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
   Map<String, dynamic> _serverData = {};
-  String _appVersion = "Unknown";
   final List<FlSpot> _dlSpots = [];
   final List<FlSpot> _upSpots = [];
   double _timeCounter = 0;
   final int _maxPoints = 30;
   Timer? _timer;
-
-  bool _isOnline = false;
-  int _pingMs = 0;
 
   double _peakDlSpeed = 0;
   double _peakUpSpeed = 0;
@@ -48,20 +44,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   Future<void> _fetch() async {
-    final stopwatch = Stopwatch()..start();
     final data = await ApiService.getMainData();
-    stopwatch.stop();
-
-    if (_appVersion == "Unknown") {
-      final v = await ApiService.getAppVersion();
-      if (v != null) setState(() => _appVersion = v);
-    }
 
     if (mounted) {
       setState(() {
         if (data != null) {
-          _isOnline = true;
-          _pingMs = stopwatch.elapsedMilliseconds;
           _serverData = data;
           
           final serverState = data['server_state'] ?? {};
@@ -76,8 +63,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           _dlSpots.add(FlSpot(_timeCounter, dlSpeed));
           _upSpots.removeAt(0);
           _upSpots.add(FlSpot(_timeCounter, upSpeed));
-        } else {
-          _isOnline = false;
         }
       });
     }
@@ -169,15 +154,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     _buildTaskOverviewCards(isDark, taskCounts),
                     const SizedBox(height: 16),
 
-                    _buildInfoCard(
-                      isDark: isDark,
-                      title: "服务器",
-                      rows: [
-                        _buildServerStatusRow(isDark),
-                        _buildInfoRow("qBittorrent 版本", _appVersion, isDark, bold: true),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
                     _buildInfoCard(
                       isDark: isDark,
                       title: "历史统计",
@@ -443,39 +419,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildServerStatusRow(bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text("连接状态", style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black)),
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: _isOnline ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                _isOnline ? "在线 (${_pingMs}ms)" : "离线",
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: _isOnline ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed,
-                ),
-              ),
-            ],
           ),
         ],
       ),

@@ -1,5 +1,4 @@
-import 'user_agreement_screen.dart';
-import 'privacy_policy_screen.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -13,7 +12,9 @@ import '../../services/api_service.dart';
 import '../server/server_list_screen.dart';
 import 'log_viewer_screen.dart';
 import 'feedback_screen.dart';
-import 'support_screen.dart'; 
+import 'support_screen.dart';
+import 'user_agreement_screen.dart';
+import 'privacy_policy_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -29,6 +30,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _refreshInterval = 3;
   bool _cellularWarn = true;
   
+  // 新增：服务器状态相关
+  bool _isOnline = false;
+  int _pingMs = 0;
+  Timer? _timer;
+  
   final _pathCtrl = TextEditingController(); 
   final _prowlarrUrlCtrl = TextEditingController();
   final _prowlarrKeyCtrl = TextEditingController();
@@ -38,10 +44,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadData();
+    // 启动定时器，每 3 秒检测一次服务器连通性和 Ping
+    _checkServerStatus();
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _checkServerStatus());
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     _pathCtrl.dispose();
     _prowlarrUrlCtrl.dispose();
     _prowlarrKeyCtrl.dispose();
@@ -49,15 +59,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  // 获取服务器 Ping 和 版本号
+  Future<void> _checkServerStatus() async {
+    if (_currentServer == null) return;
+    
+    final stopwatch = Stopwatch()..start();
+    final v = await ApiService.getAppVersion();
+    stopwatch.stop();
+
+    if (mounted) {
+      setState(() {
+        if (v != null) {
+          _isOnline = true;
+          _pingMs = stopwatch.elapsedMilliseconds;
+          _qbtVersion = v;
+        } else {
+          _isOnline = false;
+        }
+      });
+    }
+  }
+
   void _loadData() async {
     final s = await ServerManager.getCurrentServer();
-    final v = await ApiService.getAppVersion();
     final prefs = await SharedPreferences.getInstance();
     final t = prefs.getString('login_time');
 
     setState(() {
       _currentServer = s;
-      if (v != null) _qbtVersion = v;
       if (t != null) {
         final dt = DateTime.parse(t);
         _loginTime = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
@@ -233,15 +262,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 13),
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                _currentServer!['host'],
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w900,
-                                  color: isDark ? Colors.white : Colors.black,
-                                ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _currentServer!['host'],
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w900,
+                                        color: isDark ? Colors.white : Colors.black,
+                                      ),
+                                    ),
+                                  ),
+                                  // 高颜值状态徽章
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: (_isOnline ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 6,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                            color: _isOnline ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          _isOnline ? "${_pingMs}ms" : "离线",
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: _isOnline ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 12),
                               Row(
                                 children: [
                                   const Icon(
@@ -259,7 +326,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 6),
                               Row(
                                 children: [
                                   const Icon(
