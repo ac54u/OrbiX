@@ -7,8 +7,6 @@ import '../../core/utils.dart';
 import '../../services/api_service.dart';
 import 'speed_limit_sheet.dart';
 
-// 🚀 新增引入日历面板 (请确保路径与你的实际文件位置匹配)
-// 如果 upcoming_media_screen.dart 和当前文件在同一目录，改成 import 'upcoming_media_screen.dart'; 即可
 import '../upcoming_media_screen.dart'; 
 
 class StatisticsScreen extends StatefulWidget {
@@ -151,7 +149,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     
-                    _buildQuickActionBar(isDark), // 🚀 移除了 useAltSpeed 参数
+                    _buildQuickActionBar(isDark), // 纯净的媒体日历入口
                     const SizedBox(height: 16),
 
                     _buildTaskOverviewCards(isDark, taskCounts),
@@ -217,94 +215,54 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
+  // 🚀 彻底清理：只保留媒体日历，并做宽按钮居中处理
   Widget _buildQuickActionBar(bool isDark) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: isDark ? kCardColorDark : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: isDark ? [] : kMinimalShadow,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // 🚀 左侧：全新的“媒体日历”入口按钮
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            minSize: 0,
-            onPressed: () {
-              Navigator.push(
-                context,
-                CupertinoPageRoute(
-                  builder: (context) => const UpcomingMediaScreen(),
-                ),
-              );
-            },
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: CupertinoColors.activeBlue.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.calendar,
-                    color: CupertinoColors.activeBlue,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  "媒体日历",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
-                ),
-              ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        onPressed: () {
+          Navigator.push(
+            context,
+            CupertinoPageRoute(
+              builder: (context) => const UpcomingMediaScreen(),
             ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: isDark ? kCardColorDark : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isDark ? [] : kMinimalShadow,
           ),
-          
-          // 右侧：保留原来的暂停/恢复按钮
-          Row(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                minSize: 32,
-                onPressed: () async {
-                  try {
-                    await ApiService.pauseAll();
-                    Utils.showToast("已暂停所有任务");
-                    await Future.delayed(const Duration(milliseconds: 500));
-                    await _fetch();
-                  } catch (e) {
-                    Utils.showToast("暂停失败");
-                  }
-                },
-                child: const Icon(CupertinoIcons.pause_circle_fill, color: CupertinoColors.destructiveRed, size: 28),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: CupertinoColors.activeBlue.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  CupertinoIcons.calendar,
+                  color: CupertinoColors.activeBlue,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                minSize: 32,
-                onPressed: () async {
-                  try {
-                    await ApiService.resumeAll();
-                    Utils.showToast("已恢复所有任务");
-                    await Future.delayed(const Duration(milliseconds: 500));
-                    await _fetch();
-                  } catch (e) {
-                    Utils.showToast("恢复失败");
-                  }
-                },
-                child: const Icon(CupertinoIcons.play_circle_fill, color: CupertinoColors.activeGreen, size: 28),
+              Text(
+                "打开媒体日历",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
