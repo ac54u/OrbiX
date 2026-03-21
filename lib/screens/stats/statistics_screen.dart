@@ -7,6 +7,10 @@ import '../../core/utils.dart';
 import '../../services/api_service.dart';
 import 'speed_limit_sheet.dart';
 
+// 🚀 新增引入日历面板 (请确保路径与你的实际文件位置匹配)
+// 如果 upcoming_media_screen.dart 和当前文件在同一目录，改成 import 'upcoming_media_screen.dart'; 即可
+import '../upcoming_media_screen.dart'; 
+
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
 
@@ -117,7 +121,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final ratioRaw = serverState['global_ratio'];
     final ratio = (ratioRaw is num) ? ratioRaw.toStringAsFixed(2) : (ratioRaw ?? "0.00");
     
-    final bool useAltSpeed = serverState['use_alt_speed_limits'] ?? false;
     final taskCounts = _getTaskCounts();
 
     return ValueListenableBuilder<bool>(
@@ -148,7 +151,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     
-                    _buildQuickActionBar(isDark, useAltSpeed),
+                    _buildQuickActionBar(isDark), // 🚀 移除了 useAltSpeed 参数
                     const SizedBox(height: 16),
 
                     _buildTaskOverviewCards(isDark, taskCounts),
@@ -214,7 +217,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildQuickActionBar(bool isDark, bool useAltSpeed) {
+  Widget _buildQuickActionBar(bool isDark) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -226,49 +229,46 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Icon(
-                CupertinoIcons.tortoise_fill, 
-                color: useAltSpeed ? CupertinoColors.activeOrange : Colors.grey,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                "备用限速",
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white : Colors.black,
+          // 🚀 左侧：全新的“媒体日历”入口按钮
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minSize: 0,
+            onPressed: () {
+              Navigator.push(
+                context,
+                CupertinoPageRoute(
+                  builder: (context) => const UpcomingMediaScreen(),
                 ),
-              ),
-              const SizedBox(width: 8),
-              CupertinoSwitch(
-                value: useAltSpeed,
-                activeColor: CupertinoColors.activeOrange,
-                onChanged: (val) async {
-                  setState(() {
-                    if (_serverData['server_state'] != null) {
-                      _serverData['server_state']['use_alt_speed_limits'] = val;
-                    }
-                  });
-
-                  try {
-                    await ApiService.toggleAltSpeedLimitsMode(); 
-                    await Future.delayed(const Duration(milliseconds: 500));
-                    await _fetch();
-                  } catch (e) {
-                    setState(() {
-                      if (_serverData['server_state'] != null) {
-                        _serverData['server_state']['use_alt_speed_limits'] = !val;
-                      }
-                    });
-                    Utils.showToast("切换限速模式失败");
-                  }
-                },
-              ),
-            ],
+              );
+            },
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.activeBlue.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.calendar,
+                    color: CupertinoColors.activeBlue,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  "媒体日历",
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+              ],
+            ),
           ),
+          
+          // 右侧：保留原来的暂停/恢复按钮
           Row(
             children: [
               CupertinoButton(
