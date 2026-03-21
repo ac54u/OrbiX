@@ -1,10 +1,6 @@
 import UIKit
 import Flutter
-<<<<<<< HEAD
 import ActivityKit
-=======
-import ActivityKit // 引入灵动岛框架
->>>>>>> 84fafee58859069611a393fd4672262caf5aab02
 
 @UIApplicationMain
 @objc class AppDelegate: FlutterAppDelegate {
@@ -18,17 +14,12 @@ import ActivityKit // 引入灵动岛框架
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
       
-<<<<<<< HEAD
-=======
-    // 建立通信通道
->>>>>>> 84fafee58859069611a393fd4672262caf5aab02
     let liveActivityChannel = FlutterMethodChannel(name: "com.orbix/live_activity",
                                               binaryMessenger: controller.binaryMessenger)
       
     liveActivityChannel.setMethodCallHandler({
       (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
         
-<<<<<<< HEAD
       // ⚠️ 加入 iOS 版本判断，保护低版本系统不崩溃
       if #available(iOS 16.1, *) {
           switch call.method {
@@ -61,34 +52,6 @@ import ActivityKit // 引入灵动岛框架
       } else {
           // 如果手机系统低于 16.1，静默失败，啥也不干
           result(FlutterError(code: "UNSUPPORTED", message: "灵动岛需要 iOS 16.1+", details: nil))
-=======
-      switch call.method {
-      case "startDownload":
-          if let args = call.arguments as? [String: Any],
-             let movieName = args["movieName"] as? String {
-              LiveActivityManager.shared.startDownload(movieName: movieName)
-              result(true)
-          } else {
-              result(FlutterError(code: "INVALID_ARGS", message: "缺少电影名", details: nil))
-          }
-          
-      case "updateProgress":
-          if let args = call.arguments as? [String: Any],
-             let progress = args["progress"] as? Double,
-             let speed = args["speed"] as? String {
-              LiveActivityManager.shared.updateProgress(progress: progress, speed: speed)
-              result(true)
-          } else {
-              result(FlutterError(code: "INVALID_ARGS", message: "参数错误", details: nil))
-          }
-          
-      case "stopDownload":
-          LiveActivityManager.shared.stopDownload()
-          result(true)
-          
-      default:
-          result(FlutterMethodNotImplemented)
->>>>>>> 84fafee58859069611a393fd4672262caf5aab02
       }
     })
 
@@ -96,12 +59,8 @@ import ActivityKit // 引入灵动岛框架
   }
 }
 
-<<<<<<< HEAD
 // ⚠️ 给整个管理器打上标签，限制仅在 16.1 及以上系统编译
 @available(iOS 16.1, *)
-=======
-// 这是管理灵动岛生命周期的核心类
->>>>>>> 84fafee58859069611a393fd4672262caf5aab02
 class LiveActivityManager {
     static let shared = LiveActivityManager()
     private var currentActivity: Activity<DownloadAttributes>?
