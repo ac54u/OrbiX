@@ -30,6 +30,13 @@ class ArrApiService {
   
   static String _buildImageUrl(String rawUrl, String baseUrl, String apiKey) {
     if (rawUrl.isEmpty) return '';
+    
+    // 🚀 修复：如果是外部图床（如 TMDB），绝对不要拼接我们的 apikey
+    if (rawUrl.startsWith('http') && !rawUrl.contains(baseUrl)) {
+      return rawUrl;
+    }
+    
+    // 只有内部相对路径（如 /MediaCover/...），才拼上域名和 apikey
     String fullUrl = rawUrl.startsWith('http') ? rawUrl : '$baseUrl$rawUrl';
     if (!fullUrl.contains('apikey=')) {
       fullUrl += fullUrl.contains('?') ? '&apikey=$apiKey' : '?apikey=$apiKey';
