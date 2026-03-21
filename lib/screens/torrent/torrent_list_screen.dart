@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
+import '../../services/live_activity_service.dart'; // 🚀 新增：引入灵动岛服务
 
 // 引入详情页和添加页
 import 'torrent_detail_screen.dart';
@@ -162,6 +163,18 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     } else {
       Utils.showToast("操作成功");
       _fetchTorrents();
+      
+      // 🚀 核心升级：无缝联动灵动岛！
+      if (action == 'start' || action == 'forceStart') {
+        // 从列表里找到刚启动的那个任务的名字
+        final target = _torrents.firstWhere((e) => e['hash'] == hash, orElse: () => null);
+        final name = target != null ? target['name'] : '下载任务';
+        // 唤醒灵动岛
+        LiveActivityService.start(name);
+      } else if (action == 'pause' || action == 'delete' || action == 'deleteWithFiles') {
+        // 任务暂停或删除时，收起灵动岛
+        LiveActivityService.stop();
+      }
     }
   }
 
@@ -219,7 +232,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   Widget build(BuildContext context) {
     final displayList = _processTorrents();
     
-    // 1. 使用 ValueListenableBuilder 监听主题变化
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
       builder: (context, isDark, child) {
@@ -283,7 +295,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       )
                     : SliverList(
                         delegate: SliverChildBuilderDelegate(
-                          // 2. 将 isDark 传递给子组件
                           (context, index) => _buildTorrentItem(displayList[index], isDark),
                           childCount: displayList.length,
                         ),
@@ -296,7 +307,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-  // 接收 isDark 参数
   Widget _buildTorrentItem(dynamic t, bool isDark) {
     final hash = t['hash'] ?? '';
     final state = t['state'] ?? 'unknown';
@@ -440,7 +450,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-  // 接收 isDark 参数
   Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
@@ -587,7 +596,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 }
 
-// --- 筛选面板 (FilterSheet) ---
+// --- 筛选面板 (FilterSheet) 保持原样 ---
 class FilterSheet extends StatefulWidget {
   final String currentStatus;
   final String currentSort;
@@ -663,7 +672,6 @@ class _FilterSheetState extends State<FilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // 3. FilterSheet 也使用 ValueListenableBuilder 确保弹窗内颜色实时更新
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
       builder: (context, isDark, child) {
@@ -691,7 +699,7 @@ class _FilterSheetState extends State<FilterSheet> {
                   style: TextStyle(
                     fontWeight: FontWeight.bold, 
                     fontSize: 17,
-                    color: isDark ? Colors.white : Colors.black, // 适配文字颜色
+                    color: isDark ? Colors.white : Colors.black, 
                   ),
                 ),
               ),
@@ -721,7 +729,7 @@ class _FilterSheetState extends State<FilterSheet> {
               Expanded(
                 child: _isLoading
                     ? const Center(child: CupertinoActivityIndicator())
-                    : _buildList(isDark), // 传递 isDark
+                    : _buildList(isDark), 
               ),
               SafeArea(
                 child: Padding(
