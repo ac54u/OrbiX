@@ -8,6 +8,7 @@ class LiveActivityService {
   static const MethodChannel _channel = MethodChannel('com.orbix/live_activity');
   static Timer? _timer;
   static bool _isActive = false; 
+  static double _lastProgress = 0.0; // 🚀 新增：用来记住退到后台前的最后进度
   static final _LifecycleObserver _observer = _LifecycleObserver();
 
   /// 1. 🚀 点亮灵动岛并开始监听网速
@@ -78,6 +79,8 @@ class LiveActivityService {
       final activeTask = torrents.first;
 
       double progress = (activeTask['progress'] ?? 0).toDouble();
+      _lastProgress = progress; // 🚀 每次获取新数据时，更新最后的进度值
+
       int speedRaw = activeTask['dlspeed'] ?? 0;
       String speedStr = "${Utils.formatBytes(speedRaw)}/s";
       
@@ -120,7 +123,11 @@ class LiveActivityService {
   static void onAppPaused() {
     if (!_isActive) return;
     _timer?.cancel();
-    update(0.0, "后台挂起", "--", "请回前台查看");
+    
+    // 🚀 修复点：
+    // 1. 传入 _lastProgress 保持进度条原样，防止变0%
+    // 2. 右上角传"后台"2个字防挤压换行，长文本放入左下角容量区
+    update(_lastProgress, "后台", "--", "请回前台查看");
   }
 
   /// ▶️ App 回到前台时的处理
