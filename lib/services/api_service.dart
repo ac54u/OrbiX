@@ -4,9 +4,9 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
-import '../core/constants.dart'; // 引入常量
-import '../core/utils.dart';     // 引入工具
-import 'server_manager.dart';    // 引入 ServerManager
+import '../core/constants.dart'; 
+import '../core/utils.dart';     
+import 'server_manager.dart';    
 
 class ApiService {
   static final Dio _dio = Dio();
@@ -167,7 +167,6 @@ class ApiService {
     }
   }
 
-  // ✅ 新增：切换备用限速模式 (小乌龟)
   static Future<void> toggleAltSpeedLimitsMode() async {
     _ensureInit();
     try {
@@ -184,7 +183,6 @@ class ApiService {
     }
   }
 
-  // ✅ 新增：暂停所有任务
   static Future<void> pauseAll() async {
     _ensureInit();
     try {
@@ -202,7 +200,6 @@ class ApiService {
     }
   }
 
-  // ✅ 新增：恢复所有任务
   static Future<void> resumeAll() async {
     _ensureInit();
     try {
@@ -510,6 +507,72 @@ class ApiService {
       return (r.data['cast'] as List).take(10).toList();
     } catch (e) {
       return [];
+    }
+  }
+
+  // ✅ 新增：在 Radarr 中搜索电影资料
+  static Future<List<dynamic>> searchRadarr(String query) async {
+    final p = await SharedPreferences.getInstance();
+    final url = p.getString('radarr_url');
+    final key = p.getString('radarr_key');
+
+    if (url == null || key == null || key.isEmpty) throw "请先在设置中配置 Radarr 地址和 Key";
+
+    try {
+      final r = await _dio.get(
+        '$url/api/v3/movie/lookup',
+        queryParameters: {'term': query},
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+      return r.data;
+    } catch (e) {
+      throw "Radarr 连接失败: $e";
+    }
+  }
+
+  // ✅ 新增：将电影添加到 Radarr 监控并自动搜索下载
+  static Future<bool> addMovieToRadarr(Map<String, dynamic> movieData) async {
+    final p = await SharedPreferences.getInstance();
+    final url = p.getString('radarr_url');
+    final key = p.getString('radarr_key');
+
+    try {
+      final profilesResp = await _dio.get(
+        '$url/api/v3/qualityprofile',
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+      final foldersResp = await _dio.get(
+        '$url/api/v3/rootfolder',
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+
+      if ((profilesResp.data as List).isEmpty || (foldersResp.data as List).isEmpty) {
+        throw "Radarr 端缺少基础配置(质量配置或根目录)";
+      }
+
+      final profileId = profilesResp.data[0]['id'];
+      final rootPath = foldersResp.data[0]['path'];
+
+      final payload = {
+        ...movieData,
+        'qualityProfileId': profileId,
+        'rootFolderPath': rootPath,
+        'monitored': true,
+        'addOptions': {
+          'searchForMovie': true 
+        }
+      };
+
+      final r = await _dio.post(
+        '$url/api/v3/movie',
+        data: payload,
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+
+      return r.statusCode == 201 || r.statusCode == 200;
+    } catch (e) {
+      print("添加至 Radarr 失败: $e");
+      return false;
     }
   }
 }

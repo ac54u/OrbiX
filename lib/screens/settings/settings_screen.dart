@@ -38,6 +38,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _pathCtrl = TextEditingController(); 
   final _prowlarrUrlCtrl = TextEditingController();
   final _prowlarrKeyCtrl = TextEditingController();
+  // 新增：Radarr 相关控制器
+  final _radarrUrlCtrl = TextEditingController();
+  final _radarrKeyCtrl = TextEditingController();
   final _tmdbKeyCtrl = TextEditingController();
 
   @override
@@ -55,6 +58,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _pathCtrl.dispose();
     _prowlarrUrlCtrl.dispose();
     _prowlarrKeyCtrl.dispose();
+    _radarrUrlCtrl.dispose();
+    _radarrKeyCtrl.dispose();
     _tmdbKeyCtrl.dispose();
     super.dispose();
   }
@@ -99,6 +104,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       String defaultUrl = s != null ? "http://${s['host']}:9696" : "";
       _prowlarrUrlCtrl.text = prefs.getString('prowlarr_url') ?? defaultUrl;
       _prowlarrKeyCtrl.text = prefs.getString('prowlarr_key') ?? '';
+      
+      // 读取 Radarr 配置
+      _radarrUrlCtrl.text = prefs.getString('radarr_url') ?? '';
+      _radarrKeyCtrl.text = prefs.getString('radarr_key') ?? '';
+      
       _tmdbKeyCtrl.text = prefs.getString('tmdb_key') ?? '';
     });
   }
@@ -123,6 +133,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final p = await SharedPreferences.getInstance();
     await p.setString('prowlarr_url', _prowlarrUrlCtrl.text);
     await p.setString('prowlarr_key', _prowlarrKeyCtrl.text);
+    // 保存 Radarr 配置
+    await p.setString('radarr_url', _radarrUrlCtrl.text);
+    await p.setString('radarr_key', _radarrKeyCtrl.text);
     await p.setString('tmdb_key', _tmdbKeyCtrl.text);
     Utils.showToast("扩展配置已保存");
     Navigator.pop(context);
@@ -151,7 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: Container(
-              height: 500,
+              height: 650, // 增高了弹窗以适应更多的输入框
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: isDark ? kCardColorDark : kBgColorLight,
@@ -190,6 +203,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(color: isDark ? Colors.white : Colors.black),
                     ),
                     const SizedBox(height: 24),
+                    
+                    // 新增的 Radarr 填写区域
+                    Text(
+                      "Radarr 地址",
+                      style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
+                    ),
+                    CupertinoTextField(
+                      controller: _radarrUrlCtrl,
+                      placeholder: "http://192.168.1.x:7878",
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Radarr API Key",
+                      style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
+                    ),
+                    CupertinoTextField(
+                      controller: _radarrKeyCtrl,
+                      placeholder: "Radarr 设置获取",
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    ),
+                    const SizedBox(height: 24),
+
                     Text(
                       "TMDB API Key (选填)",
                       style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12),
@@ -450,7 +486,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               color: isDark ? Colors.white : Colors.black,
                             ),
                           ),
-                          subtitle: Text("配置 Prowlarr & TMDB", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
+                          subtitle: Text("配置 Prowlarr, Radarr & TMDB", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
                           leading: const Icon(
                             CupertinoIcons.search_circle_fill,
                             color: Colors.purple,
