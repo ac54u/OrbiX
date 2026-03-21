@@ -168,22 +168,6 @@ class ApiService {
     }
   }
 
-  static Future<void> toggleAltSpeedLimitsMode() async {
-    _ensureInit();
-    try {
-      final u = await _url();
-      if (u == null) return;
-      final opts = await _getOptions();
-      await _dio.post(
-        '$u/api/v2/transfer/toggleSpeedLimitsMode',
-        options: opts,
-      );
-    } catch (e) {
-      print("切换备用限速失败: $e");
-      rethrow;
-    }
-  }
-
   static Future<void> pauseAll() async {
     _ensureInit();
     try {
@@ -530,10 +514,8 @@ class ApiService {
     }
   }
 
-  // --- Emby 联动 API (已修复为 Dio) ---
-
   static Future<String?> checkMovieInEmby(String tmdbId) async {
-    _ensureInit(); // 确保 Dio 初始化，继承拦截器和证书配置
+    _ensureInit(); 
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('emby_url') ?? '';
     final key = prefs.getString('emby_api_key') ?? '';
@@ -543,7 +525,6 @@ class ApiService {
     final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
     
     try {
-      // 替换了报错的 http.get，使用 dio 处理
       final response = await _dio.get(
         '$cleanUrl/emby/Items',
         queryParameters: {
@@ -554,7 +535,7 @@ class ApiService {
         }
       );
       if (response.statusCode == 200) {
-        final data = response.data; // Dio 自动 parse JSON
+        final data = response.data; 
         if (data['TotalRecordCount'] != null && data['TotalRecordCount'] > 0) {
           return data['Items'][0]['Id'].toString(); 
         }
@@ -579,7 +560,6 @@ class ApiService {
     }
   }
 
-  // ✅ 将电影添加到 Radarr 监控并自动搜索下载
   static Future<bool> addMovieToRadarr(Map<String, dynamic> movieData) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('radarr_url');
@@ -621,6 +601,86 @@ class ApiService {
       return r.statusCode == 201 || r.statusCode == 200;
     } catch (e) {
       print("添加至 Radarr 失败: $e");
+      return false;
+    }
+  }
+
+  // ==========================================
+  // --- Sonarr 剧集联动 API (新增) ---
+  // ==========================================
+
+  /// 🔍 搜索 Sonarr 剧集
+  static Future<List<dynamic>> searchSonarr(String query) async {
+    final p = await SharedPreferences.getInstance();
+    final url = p.getString('sonarr_url');
+    final key = p.getString('sonarr_key');
+
+    if (url == null || key == null || key.isEmpty) throw "请先在设置中配置 Sonarr 地址和 Key";
+
+    try {
+      final r = await _dio.get(
+        '$url/api/v3/series/lookup',
+        queryParameters: {'term': query},
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+      return r.data;
+    } catch (e) {
+      throw "Sonarr 连接失败: $e";
+    }
+  }
+
+  /// ✅ 将剧集添加到 Sonarr 监控并自动搜索下载
+  static Future<bool> addSeriesToSonarr(Map<String, dynamic> seriesData) async {
+    final p = await SharedPreferences.getInstance();
+    final url = p.getString('sonarr_url');
+    final key = p.getString('sonarr_key');
+
+    try {
+      // 1. 获取基础配置
+      final profilesResp = await _dio.get(
+        '$url/api/v3/qualityprofile',
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+      final foldersResp = await _dio.get(
+        '$url/api/v3/rootfolder',
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+      final languageResp = await _dio.get(
+        '$url/api/v3/languageprofile', // Sonarr v3 需要语言配置
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+
+      if ((profilesResp.data as List).isEmpty || (foldersResp.data as List).isEmpty) {
+        throw "Sonarr 端缺少基础配置(质量配置或根目录)";
+      }
+
+      // 2. 提取默认配置的 ID
+      final profileId = profilesResp.data[0]['id'];
+      final rootPath = foldersResp.data[0]['path'];
+      final languageProfileId = (languageResp.data as List).isNotEmpty ? languageResp.data[0]['id'] : 1;
+
+      // 3. 组装提交给 Sonarr 的 Payload
+      final payload = {
+        ...seriesData,
+        'qualityProfileId': profileId,
+        'languageProfileId': languageProfileId,
+        'rootFolderPath': rootPath,
+        'monitored': true,
+        'addOptions': {
+          'searchForMissingEpisodes': true // 添加后立即搜索缺失的剧集
+        }
+      };
+
+      // 4. 发送添加请求
+      final r = await _dio.post(
+        '$url/api/v3/series',
+        data: payload,
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+
+      return r.statusCode == 201 || r.statusCode == 200;
+    } catch (e) {
+      print("添加至 Sonarr 失败: $e");
       return false;
     }
   }
