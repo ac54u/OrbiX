@@ -8,11 +8,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
-import '../../services/live_activity_service.dart'; // 🚀 新增：引入灵动岛服务
+import '../../services/live_activity_service.dart'; // 🚀 灵动岛服务
 
-// 引入详情页和添加页
+// 引入详情页、添加页和骨架屏组件
 import 'torrent_detail_screen.dart';
 import 'add_torrent_sheet.dart';
+import '../../widgets/skeleton_card.dart'; // 🌟 新增：引入骨架屏组件
 
 class TorrentListScreen extends StatefulWidget {
   const TorrentListScreen({super.key});
@@ -166,13 +167,10 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       
       // 🚀 核心升级：无缝联动灵动岛！
       if (action == 'start' || action == 'forceStart') {
-        // 从列表里找到刚启动的那个任务的名字
         final target = _torrents.firstWhere((e) => e['hash'] == hash, orElse: () => null);
         final name = target != null ? target['name'] : '下载任务';
-        // 唤醒灵动岛
         LiveActivityService.start(name);
       } else if (action == 'pause' || action == 'delete' || action == 'deleteWithFiles') {
-        // 任务暂停或删除时，收起灵动岛
         LiveActivityService.stop();
       }
     }
@@ -269,36 +267,41 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   return Future.delayed(const Duration(milliseconds: 500));
                 },
               ),
+              
+              // 🌟 核心修改区：状态渲染引擎
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                sliver: displayList.isEmpty
-                    ? SliverToBoxAdapter(
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 150),
-                            child: Column(
-                              children: [
-                                const Icon(
-                                  CupertinoIcons.tray,
-                                  size: 48,
-                                  color: Colors.grey,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  _isLoggedIn ? "列表空空如也" : "正在连接服务器...",
-                                  style: const TextStyle(color: Colors.grey),
-                                ),
-                              ],
-                            ),
-                          ),
+                sliver: (!_isLoggedIn && displayList.isEmpty) 
+                    // 状态 1：还没连上服务器/正在拉取数据 -> 显示高级骨架屏！
+                    ? SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) => SkeletonCard(isDark: isDark, isGrid: false),
+                          childCount: 5, // 占满一屏幕
                         ),
                       )
-                    : SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) => _buildTorrentItem(displayList[index], isDark),
-                          childCount: displayList.length,
-                        ),
-                      ),
+                    : displayList.isEmpty
+                        // 状态 2：连上服务器了，但真的没有下载任务 -> 显示空托盘
+                        ? SliverToBoxAdapter(
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 150),
+                                child: Column(
+                                  children: [
+                                    const Icon(CupertinoIcons.tray, size: 48, color: Colors.grey),
+                                    const SizedBox(height: 16),
+                                    const Text("列表空空如也", style: TextStyle(color: Colors.grey)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          )
+                        // 状态 3：有真实数据 -> 显示真实的种子列表卡片
+                        : SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) => _buildTorrentItem(displayList[index], isDark),
+                              childCount: displayList.length,
+                            ),
+                          ),
               ),
             ],
           ),
@@ -596,7 +599,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 }
 
-// --- 筛选面板 (FilterSheet) 保持原样 ---
+// --- 筛选面板 (FilterSheet) ---
 class FilterSheet extends StatefulWidget {
   final String currentStatus;
   final String currentSort;
