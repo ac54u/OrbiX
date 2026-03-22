@@ -83,6 +83,10 @@ class ApiService {
         for (final c in cookies) {
           if (c.startsWith('SID=')) {
             await prefs.setString('cookie', c.split(';').first);
+            
+            // ✅ 登录成功后，无感触发配置拉取
+            autoFetchCloudConfig();
+            
             return true;
           }
         }
@@ -682,6 +686,35 @@ class ApiService {
     } catch (e) {
       print("添加至 Sonarr 失败: $e");
       return false;
+    }
+  }
+
+  // ✅ 新增：无感拉取云端配置 (Zero-Config)
+  static Future<void> autoFetchCloudConfig() async {
+    try {
+      // ⚠️ 已替换为你的新服务器 IP
+      final apiUrl = "http://64.186.241.43:3000/api/orbix_config?token=hahayes2026"; 
+      
+      final r = await Dio().get(apiUrl);
+      if (r.data != null && r.data['success'] == true) {
+        final config = r.data['data'];
+        final p = await SharedPreferences.getInstance();
+        
+        // 自动装载到手机本地
+        if (config['prowlarr_url'] != null) await p.setString('prowlarr_url', config['prowlarr_url']);
+        if (config['prowlarr_key'] != null) await p.setString('prowlarr_key', config['prowlarr_key']);
+        if (config['radarr_url'] != null) await p.setString('radarr_url', config['radarr_url']);
+        if (config['radarr_key'] != null) await p.setString('radarr_key', config['radarr_key']);
+        if (config['sonarr_url'] != null) await p.setString('sonarr_url', config['sonarr_url']);
+        if (config['sonarr_key'] != null) await p.setString('sonarr_key', config['sonarr_key']);
+        if (config['emby_url'] != null) await p.setString('emby_url', config['emby_url']);
+        if (config['emby_key'] != null) await p.setString('emby_key', config['emby_key']);
+        if (config['tmdb_key'] != null) await p.setString('tmdb_key', config['tmdb_key']);
+        
+        print("🎉 云端聚合配置已无感下发并装载完毕！");
+      }
+    } catch (e) {
+      print("静默拉取云端配置失败: $e");
     }
   }
 }
