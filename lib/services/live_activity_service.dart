@@ -8,7 +8,7 @@ class LiveActivityService {
   static const MethodChannel _channel = MethodChannel('com.orbix/live_activity');
   static Timer? _timer;
   static bool _isActive = false; 
-  static double _lastProgress = 0.0; // 🚀 新增：用来记住退到后台前的最后进度
+  static double _lastProgress = 0.0; // 🚀 用来记住退到后台前的最后进度
   static final _LifecycleObserver _observer = _LifecycleObserver();
 
   /// 1. 🚀 点亮灵动岛并开始监听网速
@@ -68,6 +68,7 @@ class LiveActivityService {
   /// 🔌 拉取数据并更新状态
   static Future<void> _fetchAndUpdate() async {
     try {
+      // 获取下载中的任务
       final torrents = await ApiService.getTorrents(filter: 'downloading');
       
       if (torrents == null || torrents.isEmpty) {
@@ -78,8 +79,19 @@ class LiveActivityService {
       torrents.sort((a, b) => (b['dlspeed'] ?? 0).compareTo(a['dlspeed'] ?? 0));
       final activeTask = torrents.first;
 
-      double progress = (activeTask['progress'] ?? 0).toDouble();
-      _lastProgress = progress; // 🚀 每次获取新数据时，更新最后的进度值
+      // ⚠️ 获取原始进度和状态
+      double rawProgress = (activeTask['progress'] ?? 0).toDouble();
+      String rawState = (activeTask['state'] ?? 'unknown').toLowerCase();
+
+      // 🔒 核心修复：双重保险防止虚假 100%
+      // 只有进度满 1.0，且状态包含 completed(完成) 或 up(做种: uploading/stalledUP) 时，才是真完成
+      bool isTrulyCompleted = rawProgress >= 1.0 && 
+          (rawState.contains('completed') || rawState.contains('up'));
+
+      // 如果不是真完成，哪怕 API 瞬间抽风传回 1.0，也强行压制在 0.99，绝不让 iOS 触发完成 UI
+      double safeProgress = isTrulyCompleted ? 1.0 : (rawProgress >= 1.0 ? 0.99 : rawProgress);
+      
+      _lastProgress = safeProgress; // 记住安全进度
 
       int speedRaw = activeTask['dlspeed'] ?? 0;
       String speedStr = "${Utils.formatBytes(speedRaw)}/s";
@@ -107,10 +119,11 @@ class LiveActivityService {
         }
       }
 
-      update(progress, speedStr, etaStr, sizeInfo);
+      // 👉 将过滤后的“安全进度”传给 iOS 灵动岛
+      update(safeProgress, speedStr, etaStr, sizeInfo);
 
-      // 🚀 核心逻辑：进度达到 100% 时，仅做本地 UI 提示，刮削动作由服务端完成
-      if (progress >= 1.0) {
+      // 🚀 只有真正完成后，才吐司并停止追踪
+      if (isTrulyCompleted) {
         Utils.showToast("🎉 下载完成！服务器正在通知 Emby 刮削媒体库...");
         stop();
       }
@@ -124,9 +137,7 @@ class LiveActivityService {
     if (!_isActive) return;
     _timer?.cancel();
     
-    // 🚀 修复点：
-    // 1. 传入 _lastProgress 保持进度条原样，防止变0%
-    // 2. 右上角传"后台"2个字防挤压换行，长文本放入左下角容量区
+    // 传入 _lastProgress 保持进度条原样
     update(_lastProgress, "后台", "--", "请回前台查看");
   }
 
