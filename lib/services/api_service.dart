@@ -84,8 +84,11 @@ class ApiService {
           if (c.startsWith('SID=')) {
             await prefs.setString('cookie', c.split(';').first);
             
-            // ✅ 登录成功后，无感触发配置拉取
-            autoFetchCloudConfig();
+            // 🔒 专属防盗锁：只有登录你自己的 qB 时，才去拉取云端高级配置！
+            if (server['host'].toString().contains('qb.dmitt.com') || 
+                server['host'].toString().contains('69.63.217.175')) {
+              autoFetchCloudConfig();
+            }
             
             return true;
           }
