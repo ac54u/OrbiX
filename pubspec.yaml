@@ -23,7 +23,9 @@ dependencies:
   # 网络与存储
   dio: ^5.3.0
   shared_preferences: ^2.2.0
-  
+  # 👉 直接在这里加上 shimmer：
+  shimmer: ^3.0.0 
+
   # 功能组件
   fluttertoast: ^8.2.2
   google_fonts: ^6.1.0
