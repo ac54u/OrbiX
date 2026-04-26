@@ -1,48 +1,59 @@
-name: Build iOS IPA (Unsigned)
+name: Build and Publish iOS IPA
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    tags:
+      - 'v*' # 🚀 触发条件变更：只有推送以 'v' 开头的标签（如 v1.0.0）时才会运行
+  workflow_dispatch: # 保留手动触发的按钮，以备不时之需
+
+permissions:
+  contents: write # 🚀 必须新增：赋予 GitHub Actions 创建 Release 和上传文件的权限
 
 jobs:
   build-ios:
     name: Build IPA
     runs-on: macos-latest
-    
+
     steps:
-      # ✅ 更新：使用 v4 版本
       - uses: actions/checkout@v4
 
-      # ✅ 更新：使用 v4 版本
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17' # 升级到 Java 17 以获得更好的兼容性
+          java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          
+
       - name: Get Dependencies
         run: flutter pub get
 
       - name: Build iOS App (No Codesign)
         run: |
           flutter build ios --release --no-codesign
-          
+
       - name: Make IPA
         run: |
           mkdir Payload
           mv build/ios/iphoneos/Runner.app Payload/
           zip -r Orbix.ipa Payload
-          
-      # ✅ 核心修复：这里必须改用 v4，否则会报错
-      - name: Upload IPA
+
+      # 保留 Artifact 作为一个临时备份
+      - name: Upload IPA to Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Orbix-IPA
           path: Orbix.ipa
           retention-days: 5
+
+      # 🚀 新增终极杀器：自动发布到 Releases
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') # 确保只有在 Tag 触发时才执行
+        with:
+          files: Orbix.ipa
+          generate_release_notes: true # 自动把两次版本之间的 commit 记录整理成排版精美的更新日志
+          name: Release ${{ github.ref_name }} # 自动用你的 Tag 名字作为大标题
