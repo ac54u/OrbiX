@@ -28,12 +28,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _loginTime = "未知";
   int _refreshInterval = 3;
   bool _cellularWarn = true;
-  
+
   bool _isOnline = false;
   int _pingMs = 0;
   Timer? _timer;
-  
-  final _pathCtrl = TextEditingController(); 
+
+  final _pathCtrl = TextEditingController();
+
+  // 🚀 新增：所有搜刮器和媒体库的控制器
+  final _prowlarrUrlCtrl = TextEditingController();
+  final _prowlarrKeyCtrl = TextEditingController();
+  final _radarrUrlCtrl = TextEditingController();
+  final _radarrKeyCtrl = TextEditingController();
+  final _sonarrUrlCtrl = TextEditingController();
+  final _sonarrKeyCtrl = TextEditingController();
+  final _embyUrlCtrl = TextEditingController();
+  final _embyKeyCtrl = TextEditingController();
+  final _tmdbKeyCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -47,6 +58,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _timer?.cancel();
     _pathCtrl.dispose();
+    // 🚀 销毁控制器
+    _prowlarrUrlCtrl.dispose();
+    _prowlarrKeyCtrl.dispose();
+    _radarrUrlCtrl.dispose();
+    _radarrKeyCtrl.dispose();
+    _sonarrUrlCtrl.dispose();
+    _sonarrKeyCtrl.dispose();
+    _embyUrlCtrl.dispose();
+    _embyKeyCtrl.dispose();
+    _tmdbKeyCtrl.dispose();
     super.dispose();
   }
 
@@ -83,11 +104,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _refreshInterval = prefs.getInt('refresh_rate') ?? 3;
       _pathCtrl.text = prefs.getString('default_path') ?? "/data/Movies";
       _cellularWarn = prefs.getBool('cellular_warn') ?? true;
+
+      // 🚀 读取本地存储的各项配置
+      String defaultUrl = s != null ? "http://${s['host']}:9696" : "";
+      _prowlarrUrlCtrl.text = prefs.getString('prowlarr_url') ?? defaultUrl;
+      _prowlarrKeyCtrl.text = prefs.getString('prowlarr_key') ?? '';
+
+      _radarrUrlCtrl.text = prefs.getString('radarr_url') ?? '';
+      _radarrKeyCtrl.text = prefs.getString('radarr_key') ?? '';
+
+      _sonarrUrlCtrl.text = prefs.getString('sonarr_url') ?? '';
+      _sonarrKeyCtrl.text = prefs.getString('sonarr_key') ?? '';
+
+      _embyUrlCtrl.text = prefs.getString('emby_url') ?? '';
+      _embyKeyCtrl.text = prefs.getString('emby_api_key') ?? '';
+
+      _tmdbKeyCtrl.text = prefs.getString('tmdb_key') ?? '';
     });
   }
 
   Future<void> _saveDownloadPath() async {
-    FocusScope.of(context).unfocus(); 
+    FocusScope.of(context).unfocus();
     if (_pathCtrl.text.isEmpty) {
       Utils.showToast("路径不能为空");
       return;
@@ -102,18 +139,115 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // 🚀 保存所有手动配置的参数
+  void _saveExt() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('prowlarr_url', _prowlarrUrlCtrl.text);
+    await p.setString('prowlarr_key', _prowlarrKeyCtrl.text);
+    await p.setString('radarr_url', _radarrUrlCtrl.text);
+    await p.setString('radarr_key', _radarrKeyCtrl.text);
+    await p.setString('sonarr_url', _sonarrUrlCtrl.text);
+    await p.setString('sonarr_key', _sonarrKeyCtrl.text);
+    await p.setString('emby_url', _embyUrlCtrl.text);
+    await p.setString('emby_api_key', _embyKeyCtrl.text);
+    await p.setString('tmdb_key', _tmdbKeyCtrl.text);
+
+    Utils.showToast("云端扩展配置已保存");
+    Navigator.pop(context);
+  }
+
   void _saveRefreshRate(double val) async {
     final p = await SharedPreferences.getInstance();
     int r = val.toInt();
     setState(() => _refreshInterval = r);
     await p.setInt('refresh_rate', r);
   }
-  
+
   void _toggleCellular(bool v) async {
     final p = await SharedPreferences.getInstance();
     setState(() => _cellularWarn = v);
     await p.setBool('cellular_warn', v);
     if (v) Utils.showToast("流量警告已开启");
+  }
+
+  // 🚀 唤出手配面板
+  void _showExtSettings() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => ValueListenableBuilder<bool>(
+        valueListenable: themeNotifier,
+        builder: (context, isDark, child) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              height: 700,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? kCardColorDark : kBgColorLight,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "配置云端搜刮扩展",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: isDark ? Colors.white : Colors.black),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Prowlarr
+                    Text("Prowlarr 地址", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _prowlarrUrlCtrl, placeholder: "http://192.168.1.x:9696", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 12),
+                    Text("Prowlarr API Key", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _prowlarrKeyCtrl, placeholder: "在 设置 -> 通用 中获取", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 24),
+
+                    // Radarr
+                    Text("Radarr 地址", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _radarrUrlCtrl, placeholder: "http://192.168.1.x:7878", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 12),
+                    Text("Radarr API Key", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _radarrKeyCtrl, placeholder: "Radarr 设置获取", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 24),
+
+                    // Sonarr
+                    Text("Sonarr 地址", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _sonarrUrlCtrl, placeholder: "http://192.168.1.x:8989", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 12),
+                    Text("Sonarr API Key", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _sonarrKeyCtrl, placeholder: "Sonarr 设置获取", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 24),
+
+                    // Emby
+                    Text("Emby 地址", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _embyUrlCtrl, placeholder: "http://192.168.1.x:8096", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 12),
+                    Text("Emby API Key", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _embyKeyCtrl, placeholder: "在 Emby 设置 -> API 密钥获取", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 24),
+
+                    // TMDB
+                    Text("TMDB API Key (选填)", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _tmdbKeyCtrl, placeholder: "留空则使用公共 Key", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 24),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton.filled(
+                        onPressed: _saveExt,
+                        child: const Text("保存并应用"),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -203,7 +337,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       ),
-                    
+
                     const Padding(
                       padding: EdgeInsets.only(left: 32, bottom: 8, top: 16),
                       child: Align(
@@ -270,12 +404,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           trailing: Text("${_refreshInterval}s", style: const TextStyle(color: Colors.grey)),
                         ),
-                        // 🌟 极简状态栏：只做展示，不可点击，展现高级感
+                        // 🚀 已修改为可点击的手动配置入口
                         CupertinoListTile(
                           title: Text("云端搜刮扩展", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-                          subtitle: Text("网关已自动装配", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
+                          subtitle: Text("配置 Prowlarr, Radarr, Sonarr 等", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
                           leading: const Icon(CupertinoIcons.cloud_bolt_fill, color: CupertinoColors.activeBlue),
-                          trailing: const Icon(CupertinoIcons.checkmark_alt_circle_fill, color: CupertinoColors.activeGreen),
+                          trailing: const CupertinoListTileChevron(),
+                          onTap: _showExtSettings,
                         ),
                         CupertinoListTile(
                           title: Text("运行日志", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
