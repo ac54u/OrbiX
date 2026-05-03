@@ -39,6 +39,7 @@ CI/CD: GitHub Actions (全自动构建 iOS IPA 与 Release 极客化发布)
 📦 编译与运行 (Getting Started)
 
 前置要求
+
   1.Flutter 环境已配置完毕 (推荐 Flutter 3.x 稳定版)。
 
   2.macOS 系统及最新版 Xcode（用于编译 iOS）。
