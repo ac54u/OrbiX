@@ -5,11 +5,6 @@ import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
 
-// 🌟 核心：确保这里能访问到你在列表页定义的全局缓存
-// 如果你的缓存定义在 torrent_list_screen.dart，建议将其移动到 constants.dart 方便全局调用
-// 这里假设通过 widget.torrent['hash'] 从全局变量中读取
-extern Map<String, dynamic> globalMovieCache; 
-
 class TorrentDetailScreen extends StatefulWidget {
   final dynamic torrent;
   // 增加一个可选参数，直接从列表页把刮削好的数据传过来，最稳妥
@@ -156,8 +151,8 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
               ],
               image: DecorationImage(
                 image: NetworkImage(
-                  movieData['poster_url'],
-                  // 🚀 这里的 Referer 必须和列表页保持一致，解决 START-518 403报错
+                  movieData!['poster_url'], // 🚀 添加了 ! 解决空安全报错
+                  // 🚀 这里的 Referer 必须和列表页保持一致，解决 403报错
                   headers: const {
                     "Referer": "https://javbee.co/", 
                     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
