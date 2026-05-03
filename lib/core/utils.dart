@@ -2,12 +2,26 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'constants.dart'; // 引用上面的 constants.dart
 
 class Utils {
+  /// 解析种子名称，提取片名、年份和画质
   static Map<String, dynamic> cleanFileName(String raw) {
-    final yearReg = RegExp(r"(19|20)\d{2}");
+    String quality = 'HD';
+    final rawLower = raw.toLowerCase();
+    
+    // 提前提取画质标签
+    if (rawLower.contains('2160p') || rawLower.contains('4k')) {
+      quality = '2160p 4K';
+    } else if (rawLower.contains('1080p')) {
+      quality = '1080p HD';
+    }
+    if (rawLower.contains('remux')) quality += ' REMUX';
+    if (rawLower.contains('web-dl') || rawLower.contains('webrip')) quality += ' WEB';
+
+    // 提取年份 (\b 边界防止误伤 1920x1080)
+    final yearReg = RegExp(r"\b(19|20)\d{2}\b");
     final yearMatch = yearReg.firstMatch(raw);
+    
     String title = raw;
     String? year;
 
@@ -16,13 +30,18 @@ class Utils {
       title = raw.substring(0, yearMatch.start);
     }
 
+    // 清理标题
     title = title
         .replaceAll('.', ' ')
         .replaceAll('_', ' ')
         .replaceAll(RegExp(r"^\[.*?\]"), "")
         .trim();
 
-    return {'title': title, 'year': year};
+    return {
+      'title': title, 
+      'year': year,
+      'quality': quality,
+    };
   }
 
   static String formatBytes(dynamic b) {

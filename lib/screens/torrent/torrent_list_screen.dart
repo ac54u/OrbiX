@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'movie_detail_sheet.dart'; // 🌟 引入海报面板
+import '../../services/tmdb_service.dart'; // 🌟 引入 TMDB 服务
+
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
@@ -13,7 +16,7 @@ import '../../services/live_activity_service.dart'; // 🚀 灵动岛服务
 // 引入详情页、添加页和骨架屏组件
 import 'torrent_detail_screen.dart';
 import 'add_torrent_sheet.dart';
-import '../../widgets/skeleton_card.dart'; // 🌟 新增：引入骨架屏组件
+import '../../widgets/skeleton_card.dart'; // 🌟 引入骨架屏组件
 
 class TorrentListScreen extends StatefulWidget {
   const TorrentListScreen({super.key});
@@ -407,6 +410,45 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
           ),
         ],
         child: GestureDetector(
+          // 🌟 核心升级：双击触发刮削与面板弹出
+          onDoubleTap: () async {
+            final rawName = t['name'] ?? '';
+            if (rawName.isEmpty) return;
+
+            HapticFeedback.selectionClick();
+            Utils.showToast("获取影视信息中...");
+
+            // 解析种子名称
+            final parsed = Utils.cleanFileName(rawName);
+            final cleanTitle = parsed['title'];
+            final cleanYear = parsed['year'];
+            final quality = parsed['quality'];
+
+            // 请求 TMDB API
+            final movieData = await TMDBService.searchMovie(cleanTitle, cleanYear);
+
+            if (movieData != null && mounted) {
+              HapticFeedback.lightImpact();
+              // 解析成功，弹出高颜值面板
+              showCupertinoModalPopup(
+                context: context,
+                builder: (context) => RadarrStyleMovieSheet(
+                  title: movieData['title'],
+                  year: movieData['release_date'].toString().length >= 4 
+                      ? movieData['release_date'].toString().substring(0, 4) 
+                      : (cleanYear ?? ''),
+                  overview: movieData['overview'],
+                  posterUrl: movieData['poster_url'],
+                  backdropUrl: movieData['backdrop_url'],
+                  voteAverage: movieData['vote_average'],
+                  quality: quality,
+                ),
+              );
+            } else {
+              Utils.showToast("未匹配到相关影视元数据");
+            }
+          },
+          // 单击跳转详情页不变
           onTap: () => Navigator.of(context).push(
             CupertinoPageRoute(
               builder: (context) => TorrentDetailScreen(torrent: t),
