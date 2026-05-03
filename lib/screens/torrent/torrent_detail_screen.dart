@@ -5,9 +5,17 @@ import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
 
+// 🌟 核心：确保这里能访问到你在列表页定义的全局缓存
+// 如果你的缓存定义在 torrent_list_screen.dart，建议将其移动到 constants.dart 方便全局调用
+// 这里假设通过 widget.torrent['hash'] 从全局变量中读取
+extern Map<String, dynamic> globalMovieCache; 
+
 class TorrentDetailScreen extends StatefulWidget {
   final dynamic torrent;
-  const TorrentDetailScreen({super.key, required this.torrent});
+  // 增加一个可选参数，直接从列表页把刮削好的数据传过来，最稳妥
+  final Map<String, dynamic>? movieData; 
+
+  const TorrentDetailScreen({super.key, required this.torrent, this.movieData});
 
   @override
   State<TorrentDetailScreen> createState() => _TorrentDetailScreenState();
@@ -48,7 +56,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final t = widget.torrent;
-    // 1. 监听主题变化
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
       builder: (context, isDark, child) {
@@ -69,46 +76,12 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: SizedBox(
                   width: double.infinity,
-                  // 🚀 核心升级：使用现代 iOS 的滑动分段组件，完美解决深色模式反白问题
                   child: CupertinoSlidingSegmentedControl<int>(
                     groupValue: _segIndex,
                     children: {
-                      0: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        child: Text(
-                          "概览", 
-                          style: TextStyle(
-                            color: _segIndex == 0 
-                                ? Colors.white 
-                                : (isDark ? Colors.white : Colors.black),
-                            fontWeight: _segIndex == 0 ? FontWeight.bold : FontWeight.normal,
-                          )
-                        ),
-                      ),
-                      1: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        child: Text(
-                          "连接", 
-                          style: TextStyle(
-                            color: _segIndex == 1 
-                                ? Colors.white 
-                                : (isDark ? Colors.white : Colors.black),
-                            fontWeight: _segIndex == 1 ? FontWeight.bold : FontWeight.normal,
-                          )
-                        ),
-                      ),
-                      2: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        child: Text(
-                          "文件", 
-                          style: TextStyle(
-                            color: _segIndex == 2 
-                                ? Colors.white 
-                                : (isDark ? Colors.white : Colors.black),
-                            fontWeight: _segIndex == 2 ? FontWeight.bold : FontWeight.normal,
-                          )
-                        ),
-                      ),
+                      0: _buildTabItem("概览", 0, isDark),
+                      1: _buildTabItem("连接", 1, isDark),
+                      2: _buildTabItem("文件", 2, isDark),
                     },
                     onValueChanged: (v) {
                       if (v != null) {
@@ -119,17 +92,30 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                         _refreshData();
                       }
                     },
-                    thumbColor: kPrimaryColor, // 选中的滑块颜色
-                    backgroundColor: isDark ? Colors.white10 : CupertinoColors.systemGrey5, // 轨道底色
+                    thumbColor: kPrimaryColor,
+                    backgroundColor: isDark ? Colors.white10 : CupertinoColors.systemGrey5,
                   ),
                 ),
               ),
               const SizedBox(height: 10),
-              Expanded(child: _buildContent(t, isDark)), // 传递 isDark
+              Expanded(child: _buildContent(t, isDark)),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildTabItem(String text, int index, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: _segIndex == index ? Colors.white : (isDark ? Colors.white : Colors.black),
+          fontWeight: _segIndex == index ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
     );
   }
 
@@ -143,18 +129,58 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
     final addedDate = DateTime.fromMillisecondsSinceEpoch(
       (t['added_on'] ?? 0) * 1000,
     );
+
+    // 🌟 关键逻辑：获取海报链接
+    final movieData = widget.movieData;
+    final bool hasPoster = movieData != null && 
+                           movieData['poster_url'] != null && 
+                           movieData['poster_url'].isNotEmpty;
+
     return ListView(
       padding: EdgeInsets.zero,
       children: [
+        // 🎬 1. 顶部大图海报 (只显示图，不显示任何简介文字)
+        if (hasPoster)
+          Container(
+            height: 240, // 电影封面感的高度
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                )
+              ],
+              image: DecorationImage(
+                image: NetworkImage(
+                  movieData['poster_url'],
+                  // 🚀 这里的 Referer 必须和列表页保持一致，解决 START-518 403报错
+                  headers: const {
+                    "Referer": "https://javbee.co/", 
+                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+                  },
+                ),
+                fit: BoxFit.cover,
+                alignment: Alignment.topCenter,
+              ),
+            ),
+          ),
+
+        // 📊 2. 基本信息卡片
         CupertinoListSection.insetGrouped(
-          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          backgroundColor: Colors.transparent,
+          margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           decoration: BoxDecoration(
             color: isDark ? kCardColorDark : Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
           ),
           header: Text("基本信息", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey)),
           children: [
-            _row("名称", t['name'] ?? '', isDark, bold: true),
+            // 如果有刮削到的标题则显示标题，否则显示文件名
+            _row("名称", movieData?['title'] ?? t['name'], isDark, bold: true),
             _row("大小", Utils.formatBytes(t['size'] ?? 0), isDark),
             _row("进度", "${((t['progress'] ?? 0) * 100).toStringAsFixed(1)}%", isDark),
             _row("状态", t['state'] ?? '', isDark),
@@ -163,23 +189,21 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
               "${addedDate.year}-${addedDate.month}-${addedDate.day} ${addedDate.hour}:${addedDate.minute}",
               isDark,
             ),
-            _row("保存路径", t['save_path'] ?? '', isDark, small: true),
-            _row("分类", t['category'] ?? '无', isDark, small: true),
-            _row("标签", t['tags'] ?? '', isDark, small: true),
           ],
         ),
+
+        // 📉 3. 传输数据卡片
         CupertinoListSection.insetGrouped(
-          backgroundColor: isDark ? kBgColorDark : kBgColorLight,
+          backgroundColor: Colors.transparent,
+          margin: const EdgeInsets.fromLTRB(16, 4, 16, 20),
           decoration: BoxDecoration(
             color: isDark ? kCardColorDark : Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
           ),
           header: Text("传输数据", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey)),
           children: [
             _row("下载速度", "${Utils.formatBytes(t['dlspeed'] ?? 0)}/s", isDark),
-            _row("上传速度", "${Utils.formatBytes(t['upspeed'] ?? 0)}/s", isDark),
             _row("已下载", Utils.formatBytes(t['downloaded'] ?? 0), isDark),
-            _row("已上传", Utils.formatBytes(t['uploaded'] ?? 0), isDark),
             _row("分享率", (t['ratio'] ?? 0).toStringAsFixed(2), isDark),
           ],
         ),
@@ -196,32 +220,24 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
 
     final list = _peers.values.toList();
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 0),
+      padding: EdgeInsets.zero,
       itemCount: list.length,
       itemBuilder: (context, index) {
         final p = list[index];
-        final ip = p['ip'] ?? '?.?.?.?';
         return Container(
           color: isDark ? kCardColorDark : Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Column(
+          margin: const EdgeInsets.only(bottom: 1),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    ip,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                  ),
-                  Text(
-                    "${((p['progress'] ?? 0) * 100).toStringAsFixed(1)}%",
-                    style: const TextStyle(color: Colors.grey, fontSize: 13),
-                  ),
-                ],
+              Text(
+                p['ip'] ?? '?.?.?.?',
+                style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.w500),
+              ),
+              Text(
+                "${((p['progress'] ?? 0) * 100).toStringAsFixed(1)}%",
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
               ),
             ],
           ),
@@ -236,8 +252,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       itemCount: _files.length,
       itemBuilder: (context, index) {
         final f = _files[index];
-        final progress = (f['progress'] ?? 0.0).toDouble();
-
         return Container(
           color: isDark ? kCardColorDark : Colors.white,
           padding: const EdgeInsets.all(16),
@@ -245,16 +259,10 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                f['name'],
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? Colors.white : Colors.black,
-                ),
-              ),
+              Text(f['name'], style: TextStyle(fontSize: 14, color: isDark ? Colors.white : Colors.black)),
               const SizedBox(height: 8),
               LinearProgressIndicator(
-                value: progress,
+                value: (f['progress'] ?? 0.0).toDouble(),
                 minHeight: 2,
                 backgroundColor: isDark ? Colors.white10 : const Color(0xFFF2F2F7),
                 color: kPrimaryColor,
@@ -266,24 +274,17 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
     );
   }
 
-  Widget _row(
-    String label,
-    String value,
-    bool isDark, {
-    bool bold = false,
-    bool small = false,
-  }) {
+  Widget _row(String label, String value, bool isDark, {bool bold = false, bool small = false}) {
     return CupertinoListTile(
       backgroundColor: isDark ? kCardColorDark : Colors.white,
-      title: Text(
-        label,
-        style: const TextStyle(fontSize: 14, color: Colors.grey),
-      ),
+      title: Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
       trailing: SizedBox(
-        width: 200,
+        width: 220,
         child: Text(
           value,
           textAlign: TextAlign.right,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: isDark ? Colors.white : Colors.black,
             fontSize: small ? 12 : 14,
