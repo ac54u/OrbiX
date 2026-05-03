@@ -4,12 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
 class Utils {
-  /// 解析种子名称，提取片名、年份、画质，并支持番号识别路由
   static Map<String, dynamic> cleanFileName(String raw) {
     String quality = 'HD';
     final rawLower = raw.toLowerCase();
     
-    // 1. 提前提取画质标签
+    // 1. 提取画质标签
     if (rawLower.contains('2160p') || rawLower.contains('4k')) {
       quality = '2160p 4K';
     } else if (rawLower.contains('1080p')) {
@@ -18,46 +17,62 @@ class Utils {
     if (rawLower.contains('remux')) quality += ' REMUX';
     if (rawLower.contains('web-dl') || rawLower.contains('webrip')) quality += ' WEB';
 
-    // 🌟 2. 番号嗅探逻辑 (针对 START-518, 892OERO-002 等格式)
-    // 匹配规则：单词边界 + 2-6位字母 + 可选横杠 + 2-6位数字 + 单词边界
-    final codeReg = RegExp(r"\b([a-zA-Z]{2,6}-?\d{2,6})\b");
-    final codeMatch = codeReg.firstMatch(raw);
-
-    if (codeMatch != null) {
-      // 如果命中了番号格式，直接返回特殊类型，触发私有爬虫路由
-      return {
-        'type': 'niche_video', 
-        'search_key': codeMatch.group(0)!.toUpperCase(), 
-        'quality': quality,
-        'title': raw, // 备用原始名称
-      };
-    }
-
-    // 🎬 3. 常规电影提取逻辑 (原来的逻辑)
+    // 2. 电影年份提取 (优先判断)
     final yearReg = RegExp(r"\b(19|20)\d{2}\b");
     final yearMatch = yearReg.firstMatch(raw);
     
     String title = raw;
     String? year;
 
+    // 🌟 核心逻辑修复：如果找到了年份，坚决走电影模式，防止误伤 HDR10 等标签
     if (yearMatch != null) {
       year = yearMatch.group(0);
       title = raw.substring(0, yearMatch.start);
+      
+      return {
+        'type': 'movie',
+        'title': _finalizeTitle(title, raw),
+        'year': year,
+        'quality': quality,
+      };
     }
 
-    // 清理标题杂质
-    title = title
+    // 3. 番号嗅探逻辑 (仅在没有年份的情况下执行)
+    // 排除掉常见的干扰项如 HDR10, H264 等
+    final blacklist = ['HDR10', 'H264', 'H265', 'X264', 'X265', 'DV', 'PROPER', 'IMAX'];
+    final codeReg = RegExp(r"\b([a-zA-Z]{2,6}-?\d{2,6})\b");
+    final codeMatch = codeReg.firstMatch(raw);
+
+    if (codeMatch != null) {
+      String code = codeMatch.group(0)!.toUpperCase();
+      // 如果命中的码不在黑名单里，才认为是番号
+      if (!blacklist.contains(code)) {
+        return {
+          'type': 'niche_video',
+          'search_key': code,
+          'quality': quality,
+          'title': raw,
+        };
+      }
+    }
+
+    // 4. 默认回退到电影模式
+    return {
+      'type': 'movie',
+      'title': _finalizeTitle(title, raw),
+      'year': null,
+      'quality': quality,
+    };
+  }
+
+  // 辅助函数：清洗标题杂质
+  static String _finalizeTitle(String title, String raw) {
+    String result = title
         .replaceAll('.', ' ')
         .replaceAll('_', ' ')
         .replaceAll(RegExp(r"^\[.*?\]"), "")
         .trim();
-
-    return {
-      'type': 'movie', // 显式标记为常规电影
-      'title': title.isEmpty ? raw : title, 
-      'year': year,
-      'quality': quality,
-    };
+    return result.isEmpty ? raw : result;
   }
 
   static String formatBytes(dynamic b) {
