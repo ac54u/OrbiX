@@ -1,29 +1,45 @@
 OrbiX 🌊
+
 OrbiX 是一款专为极客与 Home-lab 玩家打造的极简、优雅且功能强大的 iOS 远程下载管理中枢。它不仅是一个下载控制器，更是一个拥有极致原生体验的移动端影音管家。
 
+
 ✨ 核心特性 (Features)
+
 🎬 影音管家级的视觉享受
+
 智能解析与刮削：内置强大正则引擎，自动清洗 PT/BT 命名，实时提取「片名、年份、文件大小、画质（4K REMUX / WEB-DL 等）」。
+
 
 TMDB 无缝联动：双击列表卡片，瞬间呼出 Radarr 风格 的影视元数据面板（涵盖高清海报、横版剧照、剧情简介与评分）。
 
+
 零延迟缓存架构：独创内存级缓存池（In-Memory Cache），在保证 3 秒高频轮询下载状态的同时，彻底杜绝 TMDB API 滥用与列表滑动闪烁。
 
+
 🍎 极致的 Apple 原生体验
+
 灵动岛 (Live Activities) 深度集成：启动任务即刻登岛，息屏或切换应用也能实时掌控下载速率与进度。
+
 
 Cupertino 设计语言：纯正的“果味” UI。大标题导航、高级毛玻璃（Blur）遮罩、暗黑模式（Dark Mode）完美适配。
 
+
 Taptic Engine 触感反馈：卡片长按菜单（ContextMenu）、侧滑操作（Slidable）、双击刮削均配有恰到好处的震动反馈。
 
+
 🚀 全功能的远程控制
+
 支持：启动、暂停、强制启动、强制校验、汇报、优先级调节（置顶/提高/降低）。
+
 
 支持：带本地文件同步删除的安全销毁机制。
 
+
 高级过滤：按状态、分类、标签、时间/大小/进度进行多维度排序与筛选。
 
+
 高级骨架屏 (Skeleton Loading) 与空状态托盘优雅过渡。
+
 
 🛠️ 技术栈 (Tech Stack)
 Framework: Flutter (Dart)
@@ -37,7 +53,9 @@ Local Storage: shared_preferences
 CI/CD: GitHub Actions (全自动构建 iOS IPA 与 Release 极客化发布)
 
 📦 编译与运行 (Getting Started)
+
 前置要求
+
   1.Flutter 环境已配置完毕 (推荐 Flutter 3.x 稳定版)。
 
   2.macOS 系统及最新版 Xcode（用于编译 iOS）。
