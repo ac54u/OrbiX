@@ -523,7 +523,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-  // 🌟 核心重构：支持左右布局与海报缓存读取
+// 🌟 核心重构：支持左右布局、海报展示与大小/画质标签
   Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
@@ -531,13 +531,21 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     final int upSpeed = t['upspeed'] ?? 0;
     final int eta = t['eta'] ?? 8640000;
     final String hash = t['hash'] ?? '';
+    
+    // 🌟 提取原始名字和总大小
+    final String rawName = t['name'] ?? '';
+    final int totalSize = t['size'] ?? 0;
 
     final stateConfig = _getStateConfig(stateRaw);
     final String stateText = stateConfig['text'];
     final Color stateColor = stateConfig['color'];
     final String etaStr = (eta > 8000000 || eta < 0) ? "∞" : "${eta ~/ 60}m ${eta % 60}s";
 
-    // 🌟 尝试从缓存中读取 TMDB 数据
+    // 🌟 计算格式化后的大小和画质标签
+    final String sizeStr = Utils.formatBytes(totalSize);
+    final String quality = Utils.cleanFileName(rawName)['quality'] ?? 'HD';
+
+    // 尝试从缓存中读取 TMDB 数据
     final tmdbData = _tmdbCache[hash];
     final bool hasPoster = tmdbData != null && tmdbData['status'] == 'success';
     final String posterUrl = hasPoster ? tmdbData['poster_url'] : '';
@@ -589,7 +597,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        hasPoster ? tmdbData['title'] : (t['name'] ?? '无标题'),
+                        hasPoster ? tmdbData['title'] : rawName,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -615,16 +623,45 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   ],
                 ),
                 
-                if (hasPoster)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      "${tmdbData['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData['vote_average']}",
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
+                // 🌟 新增：大小、画质与评分信息的精美组合
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(
+                    spacing: 6, // 标签之间的水平间距
+                    runSpacing: 6, // 屏幕太小换行时的垂直间距
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      // 如果有刮削数据，展示年份和评分
+                      if (hasPoster)
+                        Text(
+                          "${tmdbData['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData['vote_average']}",
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      
+                      // 💾 大小标签 (Size Badge)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
+                      ),
+                      
+                      // 🎬 画质标签 (Quality Badge)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: CupertinoColors.activeBlue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(quality, style: const TextStyle(fontSize: 10, color: CupertinoColors.activeBlue, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
                   ),
+                ),
 
-                SizedBox(height: hasPoster ? 16 : 12),
+                SizedBox(height: hasPoster ? 12 : 12),
                 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
