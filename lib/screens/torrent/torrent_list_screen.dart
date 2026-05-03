@@ -27,6 +27,10 @@ class TorrentListScreen extends StatefulWidget {
 
 class _TorrentListScreenState extends State<TorrentListScreen> {
   List<dynamic> _torrents = [];
+  
+  // 🌟 新增：TMDB 内存缓存池 (Key 为种子的 hash)，避免列表滚动时疯狂请求
+  final Map<String, Map<String, dynamic>> _tmdbCache = {};
+  
   bool _isLoggedIn = false;
   Timer? _timer;
   int _refreshRate = 3;
@@ -85,6 +89,38 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 
+  // 🌟 新增：后台静默拉取海报数据
+  void _fetchPostersBackground(List<dynamic> torrents) {
+    for (var t in torrents) {
+      final hash = t['hash'];
+      final rawName = t['name'] ?? '';
+
+      if (hash == null || rawName.isEmpty) continue;
+      
+      // 如果已经缓存过了（或者正在请求中，或者曾经请求失败），直接跳过！
+      if (_tmdbCache.containsKey(hash)) continue;
+
+      // 标记为正在加载，防止下一次轮询重复触发
+      _tmdbCache[hash] = {'status': 'loading'};
+
+      // 异步解析和请求
+      final parsed = Utils.cleanFileName(rawName);
+      TMDBService.searchMovie(parsed['title'], parsed['year']).then((movieData) {
+        if (mounted) {
+          setState(() {
+            if (movieData != null && movieData['poster_url'].isNotEmpty) {
+              _tmdbCache[hash] = movieData;
+              _tmdbCache[hash]!['status'] = 'success';
+            } else {
+              // 没搜到，标记为失败，以后不再搜
+              _tmdbCache[hash] = {'status': 'failed'};
+            }
+          });
+        }
+      });
+    }
+  }
+
   Future<void> _fetchTorrents() async {
     final data = await ApiService.getTorrents(
       filter: _filterStatus == 'default' ? 'all' : _filterStatus,
@@ -97,6 +133,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         _torrents = data;
         _isLoggedIn = true;
       });
+      // 🌟 新增：每次成功拿到数据后，触发后台海报刮削
+      _fetchPostersBackground(data);
     } else {
       setState(() => _isLoggedIn = false);
     }
@@ -168,7 +206,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       Utils.showToast("操作成功");
       _fetchTorrents();
       
-      // 🚀 核心升级：无缝联动灵动岛！
       if (action == 'start' || action == 'forceStart') {
         final target = _torrents.firstWhere((e) => e['hash'] == hash, orElse: () => null);
         final name = target != null ? target['name'] : '下载任务';
@@ -271,19 +308,16 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 },
               ),
               
-              // 🌟 核心修改区：状态渲染引擎
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                 sliver: (!_isLoggedIn && displayList.isEmpty) 
-                    // 状态 1：还没连上服务器/正在拉取数据 -> 显示高级骨架屏！
                     ? SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) => SkeletonCard(isDark: isDark, isGrid: false),
-                          childCount: 5, // 占满一屏幕
+                          childCount: 5,
                         ),
                       )
                     : displayList.isEmpty
-                        // 状态 2：连上服务器了，但真的没有下载任务 -> 显示空托盘
                         ? SliverToBoxAdapter(
                             child: Center(
                               child: Padding(
@@ -298,7 +332,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                               ),
                             ),
                           )
-                        // 状态 3：有真实数据 -> 显示真实的种子列表卡片
                         : SliverList(
                             delegate: SliverChildBuilderDelegate(
                               (context, index) => _buildTorrentItem(displayList[index], isDark),
@@ -410,7 +443,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
           ),
         ],
         child: GestureDetector(
-          // 🌟 核心升级：双击触发刮削与面板弹出
           onDoubleTap: () async {
             final rawName = t['name'] ?? '';
             if (rawName.isEmpty) return;
@@ -418,18 +450,15 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
             HapticFeedback.selectionClick();
             Utils.showToast("获取影视信息中...");
 
-            // 解析种子名称
             final parsed = Utils.cleanFileName(rawName);
             final cleanTitle = parsed['title'];
             final cleanYear = parsed['year'];
             final quality = parsed['quality'];
 
-            // 请求 TMDB API
             final movieData = await TMDBService.searchMovie(cleanTitle, cleanYear);
 
             if (movieData != null && mounted) {
               HapticFeedback.lightImpact();
-              // 解析成功，弹出高颜值面板
               showCupertinoModalPopup(
                 context: context,
                 builder: (context) => RadarrStyleMovieSheet(
@@ -448,7 +477,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               Utils.showToast("未匹配到相关影视元数据");
             }
           },
-          // 单击跳转详情页不变
           onTap: () => Navigator.of(context).push(
             CupertinoPageRoute(
               builder: (context) => TorrentDetailScreen(torrent: t),
@@ -495,19 +523,24 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
+  // 🌟 核心重构：支持左右布局与海报缓存读取
   Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
     final int dlSpeed = t['dlspeed'] ?? 0;
     final int upSpeed = t['upspeed'] ?? 0;
     final int eta = t['eta'] ?? 8640000;
+    final String hash = t['hash'] ?? '';
 
     final stateConfig = _getStateConfig(stateRaw);
     final String stateText = stateConfig['text'];
     final Color stateColor = stateConfig['color'];
-    final String etaStr = (eta > 8000000 || eta < 0)
-        ? "∞"
-        : "${eta ~/ 60}m ${eta % 60}s";
+    final String etaStr = (eta > 8000000 || eta < 0) ? "∞" : "${eta ~/ 60}m ${eta % 60}s";
+
+    // 🌟 尝试从缓存中读取 TMDB 数据
+    final tmdbData = _tmdbCache[hash];
+    final bool hasPoster = tmdbData != null && tmdbData['status'] == 'success';
+    final String posterUrl = hasPoster ? tmdbData['poster_url'] : '';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -515,104 +548,129 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         color: isDark ? kCardColorDark : kCardColorLight,
         boxShadow: kMinimalShadow,
       ),
-      child: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  t['name'] ?? '无标题',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
+          // 🎬 左侧：海报区域
+          if (hasPoster) ...[
+            Container(
+              width: 76,
+              height: 114,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Image.network(
+                posterUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: isDark ? Colors.grey[800] : Colors.grey[300],
+                  child: const Icon(CupertinoIcons.film, color: Colors.grey),
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: stateColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  stateText,
-                  style: TextStyle(
-                    color: stateColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "${(progress * 100).toStringAsFixed(1)}%",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: stateColor,
-                ),
-              ),
-              Text(
-                dlSpeed > 0 || upSpeed > 0
-                    ? "${Utils.formatBytes(dlSpeed > 0 ? dlSpeed : upSpeed)}/s"
-                    : "",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white70 : Colors.black,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: progress,
-              backgroundColor: isDark
-                  ? Colors.grey[800]
-                  : const Color(0xFFF2F2F7),
-              color: stateColor,
-              minHeight: 4,
             ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    CupertinoIcons.chart_bar_alt_fill,
-                    size: 14,
-                    color: Color(0xFFFF9500),
+            const SizedBox(width: 14),
+          ],
+          
+          // 📊 右侧：核心数据面板
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        hasPoster ? tmdbData['title'] : (t['name'] ?? '无标题'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                          height: 1.2,
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: stateColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        stateText,
+                        style: TextStyle(color: stateColor, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                
+                if (hasPoster)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      "${tmdbData['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData['vote_average']}",
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    (t['ratio'] ?? 0).toStringAsFixed(2),
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+
+                SizedBox(height: hasPoster ? 16 : 12),
+                
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "${(progress * 100).toStringAsFixed(1)}%",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: stateColor),
+                    ),
+                    Text(
+                      dlSpeed > 0 || upSpeed > 0 ? "${Utils.formatBytes(dlSpeed > 0 ? dlSpeed : upSpeed)}/s" : "",
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: isDark ? Colors.white70 : Colors.black),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: isDark ? Colors.grey[800] : const Color(0xFFF2F2F7),
+                    color: stateColor,
+                    minHeight: 4,
                   ),
-                ],
-              ),
-              Row(
-                children: [
-                  const Icon(CupertinoIcons.time, size: 14, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    etaStr,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(CupertinoIcons.chart_bar_alt_fill, size: 14, color: Color(0xFFFF9500)),
+                        const SizedBox(width: 4),
+                        Text((t['ratio'] ?? 0).toStringAsFixed(2), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        const Icon(CupertinoIcons.time, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(etaStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
