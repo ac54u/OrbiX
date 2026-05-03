@@ -479,7 +479,11 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
           },
           onTap: () => Navigator.of(context).push(
             CupertinoPageRoute(
-              builder: (context) => TorrentDetailScreen(torrent: t),
+              builder: (context) => TorrentDetailScreen(
+                torrent: t,
+                // 将刮削好的数据传给详情页
+                movieData: _tmdbCache[hash]?['status'] == 'success' ? _tmdbCache[hash] : null,
+              ),
             ),
           ),
           child: ClipRRect(
@@ -523,7 +527,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-// 🌟 核心重构：支持左右布局、海报展示与大小/画质标签
+  // 🌟 核心重构：支持左右布局、海报展示与大小/画质标签
   Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
@@ -574,17 +578,22 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   )
                 ],
               ),
-              child: Image.network(
-                posterUrl,
-                fit: BoxFit.cover,
-                // 🚀 终极防盗链破解：伪装成苹果手机浏览器
-                headers: const {
-                  "Referer": "https://javbee.co/", 
-                  "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-                },
-                errorBuilder: (_, __, ___) => Container(
-                  color: isDark ? Colors.grey[800] : Colors.grey[300],
-                  child: const Icon(CupertinoIcons.film, color: Colors.grey),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  posterUrl,
+                  fit: BoxFit.cover,
+                  // 🚀 终极防盗链破解：伪装成苹果手机浏览器 (与详情页保持一致)
+                  headers: const {
+                    "Referer": "https://javbee.co/", 
+                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                  },
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: isDark ? Colors.grey[800] : Colors.grey[300],
+                    child: const Center(
+                      child: Icon(CupertinoIcons.film, color: Colors.grey, size: 28),
+                    ),
+                  ),
                 ),
               ),
             ),
