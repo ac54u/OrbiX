@@ -574,10 +574,14 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   )
                 ],
               ),
-              clipBehavior: Clip.antiAlias,
               child: Image.network(
                 posterUrl,
                 fit: BoxFit.cover,
+                // 🚀 终极防盗链破解：伪装成苹果手机浏览器
+                headers: const {
+                  "Referer": "https://javbee.co/", 
+                  "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                },
                 errorBuilder: (_, __, ___) => Container(
                   color: isDark ? Colors.grey[800] : Colors.grey[300],
                   child: const Icon(CupertinoIcons.film, color: Colors.grey),
