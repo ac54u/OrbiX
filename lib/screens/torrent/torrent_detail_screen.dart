@@ -69,32 +69,58 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: SizedBox(
                   width: double.infinity,
-                  child: CupertinoSegmentedControl<int>(
+                  // 🚀 核心升级：使用现代 iOS 的滑动分段组件，完美解决深色模式反白问题
+                  child: CupertinoSlidingSegmentedControl<int>(
+                    groupValue: _segIndex,
                     children: {
                       0: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text("概览", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        child: Text(
+                          "概览", 
+                          style: TextStyle(
+                            color: _segIndex == 0 
+                                ? Colors.white 
+                                : (isDark ? Colors.white : Colors.black),
+                            fontWeight: _segIndex == 0 ? FontWeight.bold : FontWeight.normal,
+                          )
+                        ),
                       ),
                       1: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text("连接", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        child: Text(
+                          "连接", 
+                          style: TextStyle(
+                            color: _segIndex == 1 
+                                ? Colors.white 
+                                : (isDark ? Colors.white : Colors.black),
+                            fontWeight: _segIndex == 1 ? FontWeight.bold : FontWeight.normal,
+                          )
+                        ),
                       ),
                       2: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text("文件", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        child: Text(
+                          "文件", 
+                          style: TextStyle(
+                            color: _segIndex == 2 
+                                ? Colors.white 
+                                : (isDark ? Colors.white : Colors.black),
+                            fontWeight: _segIndex == 2 ? FontWeight.bold : FontWeight.normal,
+                          )
+                        ),
                       ),
                     },
                     onValueChanged: (v) {
-                      setState(() {
-                        _segIndex = v;
-                        _loading = true;
-                      });
-                      _refreshData();
+                      if (v != null) {
+                        setState(() {
+                          _segIndex = v;
+                          _loading = true;
+                        });
+                        _refreshData();
+                      }
                     },
-                    groupValue: _segIndex,
-                    borderColor: isDark ? Colors.white54 : kPrimaryColor,
-                    selectedColor: kPrimaryColor,
-                    pressedColor: kPrimaryColor.withOpacity(0.2),
+                    thumbColor: kPrimaryColor, // 选中的滑块颜色
+                    backgroundColor: isDark ? Colors.white10 : CupertinoColors.systemGrey5, // 轨道底色
                   ),
                 ),
               ),
