@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class TMDBService {
   // ⚠️ 替换为你自己的 TMDB API Key
-  static const String _apiKey = '6bb9132f55e93fea1712364280a7919a; 
+  static const String _apiKey = '6bb9132f55e93fea1712364280a7919a';
   static const String _baseUrl = 'https://api.themoviedb.org/3';
   static const String _imageBaseUrl = 'https://image.tmdb.org/t/p/';
 
