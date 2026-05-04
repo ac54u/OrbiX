@@ -7,7 +7,7 @@ import '../../services/api_service.dart';
 
 class TorrentDetailScreen extends StatefulWidget {
   final dynamic torrent;
-  // 增加一个可选参数，直接从列表页把刮削好的数据传过来，最稳妥
+  // 从列表页传过来的刮削数据
   final Map<String, dynamic>? movieData; 
 
   const TorrentDetailScreen({super.key, required this.torrent, this.movieData});
@@ -66,7 +66,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           ),
           child: Column(
             children: [
-              const SizedBox(height: 100),
+              const SizedBox(height: 100), // 为导航栏留出空间
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: SizedBox(
@@ -125,46 +125,14 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       (t['added_on'] ?? 0) * 1000,
     );
 
-    // 🌟 关键逻辑：获取海报链接
     final movieData = widget.movieData;
-    final bool hasPoster = movieData != null && 
-                           movieData['poster_url'] != null && 
-                           movieData['poster_url'].isNotEmpty;
 
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        // 🎬 1. 顶部大图海报 (只显示图，不显示任何简介文字)
-        if (hasPoster)
-          Container(
-            height: 240, // 电影封面感的高度
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                )
-              ],
-              image: DecorationImage(
-                image: NetworkImage(
-                  movieData!['poster_url'], // 🚀 添加了 ! 解决空安全报错
-                  // 🚀 这里的 Referer 必须和列表页保持一致，解决 403报错
-                  headers: const {
-                    "Referer": "https://javbee.co/", 
-                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
-                  },
-                ),
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-              ),
-            ),
-          ),
+        // 🎬 海报已按照要求移除，页面直接从信息卡片开始
 
-        // 📊 2. 基本信息卡片
+        // 📊 1. 基本信息卡片
         CupertinoListSection.insetGrouped(
           backgroundColor: Colors.transparent,
           margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -174,7 +142,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           ),
           header: Text("基本信息", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey)),
           children: [
-            // 如果有刮削到的标题则显示标题，否则显示文件名
+            // 优先显示刮削到的标题，否则显示文件名
             _row("名称", movieData?['title'] ?? t['name'], isDark, bold: true),
             _row("大小", Utils.formatBytes(t['size'] ?? 0), isDark),
             _row("进度", "${((t['progress'] ?? 0) * 100).toStringAsFixed(1)}%", isDark),
@@ -187,7 +155,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           ],
         ),
 
-        // 📉 3. 传输数据卡片
+        // 📉 2. 传输数据卡片
         CupertinoListSection.insetGrouped(
           backgroundColor: Colors.transparent,
           margin: const EdgeInsets.fromLTRB(16, 4, 16, 20),
@@ -242,6 +210,10 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   }
 
   Widget _buildFilesView(bool isDark) {
+    if (_files.isEmpty) {
+      return const Center(child: CupertinoActivityIndicator());
+    }
+
     return ListView.builder(
       padding: EdgeInsets.zero,
       itemCount: _files.length,
