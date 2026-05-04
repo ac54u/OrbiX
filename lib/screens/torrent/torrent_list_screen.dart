@@ -609,17 +609,20 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       ),
                     ),
                   ),
+                  
+                  // 🌟🌟🌟 修复点：在这里用 ClipRRect 把 BackdropFilter 包起来，防止滑动漏气！
                   Positioned.fill(
-                    child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        decoration: BoxDecoration(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Container(
                           color: isDark ? Colors.black45 : Colors.white24,
-                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
                     ),
                   ),
+                  
                   Positioned(
                     bottom: 0,
                     left: 6,
@@ -641,22 +644,24 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       ),
                     ),
                   ),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      posterUrl,
-                      fit: BoxFit.cover,
-                      headers: const {
-                        "Referer": "https://javbee.co/", 
-                        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-                      },
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.grey[800] : Colors.grey[300],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Center(
-                          child: Icon(CupertinoIcons.film, color: Colors.grey, size: 28),
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        posterUrl,
+                        fit: BoxFit.cover,
+                        headers: const {
+                          "Referer": "https://javbee.co/", 
+                          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                        },
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.grey[800] : Colors.grey[300],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Center(
+                            child: Icon(CupertinoIcons.film, color: Colors.grey, size: 28),
+                          ),
                         ),
                       ),
                     ),
@@ -821,7 +826,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 }
-
 
 // --- 筛选面板 (FilterSheet) ---
 class FilterSheet extends StatefulWidget {
