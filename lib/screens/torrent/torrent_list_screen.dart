@@ -140,7 +140,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
           Utils.showToast("🎉 [$name] 下载完成！正在通知 Emby...");
           
           // 🚀 触发后台 API 扫描 Emby
-          EmbyService.refreshLibrary();
+          EmbyService.processAndRefresh(t['name']);
           
           // 关闭可能存在的灵动岛显示
           LiveActivityService.stop();
