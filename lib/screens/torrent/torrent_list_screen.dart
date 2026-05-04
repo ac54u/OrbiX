@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui; // 🌟 核心：引入用于磨砂模糊的 dart:ui
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -527,7 +528,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-  // 🌟 核心重构：支持左右布局、海报展示与大小/画质标签
+  // 🌟 核心重构：实现磨砂玻璃背景 (Glassmorphism) 与悬浮光晕
   Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
@@ -558,43 +559,97 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? kCardColorDark : kCardColorLight,
+        // 🌟 核心调整：缩小卡片阴影，转而让海报本身承担悬浮感
         boxShadow: kMinimalShadow,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🎬 左侧：海报区域
+          // 🎬 左侧：海报区域 (Glassmorphism & Floating Effect)
           if (hasPoster) ...[
-            Container(
+            SizedBox(
               width: 76,
               height: 114,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  posterUrl,
-                  fit: BoxFit.cover,
-                  // 🚀 终极防盗链破解：伪装成苹果手机浏览器 (与详情页保持一致)
-                  headers: const {
-                    "Referer": "https://javbee.co/", 
-                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-                  },
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    color: isDark ? Colors.grey[800] : Colors.grey[300],
-                    child: const Center(
-                      child: Icon(CupertinoIcons.film, color: Colors.grey, size: 28),
+              child: Stack(
+                children: [
+                  // 1. 磨砂玻璃背景层 (Glassmorphism Behind the Poster)
+                  // 在海报后面放一个模糊、放大的海报图像，根据海报主色调动态生成背景
+                  Positioned.fill(
+                    child: Transform.scale(
+                      scale: 1.3, // 稍微放大
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          posterUrl,
+                          fit: BoxFit.cover,
+                          headers: const {
+                            "Referer": "https://javbee.co/", 
+                            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                          },
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  // 应用模糊效果
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10), // 模糊强度
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.black45 : Colors.white24, // 调整背景亮度
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  // 2. 海报底部阴影光晕 (Floating Glow)
+                  // 增加 blurRadius 让阴影更弥散，实现光晕感
+                  Positioned(
+                    bottom: 0,
+                    left: 6,
+                    right: 6,
+                    child: Container(
+                      height: 10,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: isDark 
+                                ? Colors.black.withOpacity(0.5) 
+                                : Colors.black.withOpacity(0.3), 
+                            blurRadius: 15, // 弥散半径
+                            spreadRadius: 2, // 扩展半径
+                            offset: const Offset(0, 8), // 底部偏移，增加悬浮感
+                          )
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // 3. 核心海报层 (Main Poster)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      posterUrl,
+                      fit: BoxFit.cover,
+                      // 🚀 终极防盗链破解：伪装成苹果手机浏览器 (与详情页保持一致)
+                      headers: const {
+                        "Referer": "https://javbee.co/", 
+                        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                      },
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[800] : Colors.grey[300],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Center(
+                          child: Icon(CupertinoIcons.film, color: Colors.grey, size: 28),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 14),
@@ -641,7 +696,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Wrap(
                     spacing: 6, // 标签之间的水平间距
-                    runSpacing: 6, // 屏幕太小换行时的垂直间距
+                    runSpacing: 6, // 🌟 核心调整：屏幕太小换行时的垂直间距，让标签不拥挤
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       // 如果有刮削数据，展示年份和评分
@@ -674,7 +729,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   ),
                 ),
 
-                SizedBox(height: hasPoster ? 12 : 12),
+                // 🌟 核心调整：在数据和进度条之间增加间距，让UI更呼吸
+                const SizedBox(height: 12),
                 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
