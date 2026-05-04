@@ -35,7 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   final _pathCtrl = TextEditingController();
 
-  // 🚀 新增：所有搜刮器和媒体库的控制器
+  // 🚀 所有搜刮器和媒体库的控制器
   final _prowlarrUrlCtrl = TextEditingController();
   final _prowlarrKeyCtrl = TextEditingController();
   final _radarrUrlCtrl = TextEditingController();
@@ -45,6 +45,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _embyUrlCtrl = TextEditingController();
   final _embyKeyCtrl = TextEditingController();
   final _tmdbKeyCtrl = TextEditingController();
+  
+  // 🌟 新增：私有微服务 API 控制器
+  final _customApiCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -58,7 +61,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _timer?.cancel();
     _pathCtrl.dispose();
-    // 🚀 销毁控制器
     _prowlarrUrlCtrl.dispose();
     _prowlarrKeyCtrl.dispose();
     _radarrUrlCtrl.dispose();
@@ -68,6 +70,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _embyUrlCtrl.dispose();
     _embyKeyCtrl.dispose();
     _tmdbKeyCtrl.dispose();
+    
+    // 🌟 销毁新增的控制器
+    _customApiCtrl.dispose();
     super.dispose();
   }
 
@@ -105,7 +110,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _pathCtrl.text = prefs.getString('default_path') ?? "/data/Movies";
       _cellularWarn = prefs.getBool('cellular_warn') ?? true;
 
-      // 🚀 读取本地存储的各项配置
+      // 读取本地存储的各项配置
       String defaultUrl = s != null ? "http://${s['host']}:9696" : "";
       _prowlarrUrlCtrl.text = prefs.getString('prowlarr_url') ?? defaultUrl;
       _prowlarrKeyCtrl.text = prefs.getString('prowlarr_key') ?? '';
@@ -120,6 +125,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _embyKeyCtrl.text = prefs.getString('emby_api_key') ?? '';
 
       _tmdbKeyCtrl.text = prefs.getString('tmdb_key') ?? '';
+      
+      // 🌟 读取私有微服务 API 地址
+      _customApiCtrl.text = prefs.getString('custom_api_url') ?? '';
     });
   }
 
@@ -139,18 +147,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // 🚀 保存所有手动配置的参数
+  // 保存所有手动配置的参数
   void _saveExt() async {
     final p = await SharedPreferences.getInstance();
-    await p.setString('prowlarr_url', _prowlarrUrlCtrl.text);
-    await p.setString('prowlarr_key', _prowlarrKeyCtrl.text);
-    await p.setString('radarr_url', _radarrUrlCtrl.text);
-    await p.setString('radarr_key', _radarrKeyCtrl.text);
-    await p.setString('sonarr_url', _sonarrUrlCtrl.text);
-    await p.setString('sonarr_key', _sonarrKeyCtrl.text);
-    await p.setString('emby_url', _embyUrlCtrl.text);
-    await p.setString('emby_api_key', _embyKeyCtrl.text);
-    await p.setString('tmdb_key', _tmdbKeyCtrl.text);
+    await p.setString('prowlarr_url', _prowlarrUrlCtrl.text.trim());
+    await p.setString('prowlarr_key', _prowlarrKeyCtrl.text.trim());
+    await p.setString('radarr_url', _radarrUrlCtrl.text.trim());
+    await p.setString('radarr_key', _radarrKeyCtrl.text.trim());
+    await p.setString('sonarr_url', _sonarrUrlCtrl.text.trim());
+    await p.setString('sonarr_key', _sonarrKeyCtrl.text.trim());
+    await p.setString('emby_url', _embyUrlCtrl.text.trim());
+    await p.setString('emby_api_key', _embyKeyCtrl.text.trim());
+    await p.setString('tmdb_key', _tmdbKeyCtrl.text.trim());
+    
+    // 🌟 移除首尾空格并保存私有微服务地址
+    await p.setString('custom_api_url', _customApiCtrl.text.trim());
 
     Utils.showToast("云端扩展配置已保存");
     Navigator.pop(context);
@@ -170,7 +181,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (v) Utils.showToast("流量警告已开启");
   }
 
-  // 🚀 唤出手配面板
+  // 唤出手配面板
   void _showExtSettings() {
     showCupertinoModalPopup(
       context: context,
@@ -195,6 +206,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: isDark ? Colors.white : Colors.black),
                     ),
                     const SizedBox(height: 20),
+
+                    // 🌟 新增：私有后端 API (FastAPI) 放置在最顶部
+                    Text("私有后端 API (FastAPI)", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
+                    CupertinoTextField(controller: _customApiCtrl, placeholder: "http://你的VPS_IP:8000", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(height: 24),
 
                     // Prowlarr
                     Text("Prowlarr 地址", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
@@ -404,7 +420,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           trailing: Text("${_refreshInterval}s", style: const TextStyle(color: Colors.grey)),
                         ),
-                        // 🚀 已修改为可点击的手动配置入口
                         CupertinoListTile(
                           title: Text("云端搜刮扩展", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
                           subtitle: Text("配置 Prowlarr, Radarr, Sonarr 等", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
