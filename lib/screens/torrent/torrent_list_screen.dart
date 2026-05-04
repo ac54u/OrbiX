@@ -1,23 +1,23 @@
 import 'dart:async';
-import 'dart:ui' as ui; // 🌟 核心：引入用于磨砂模糊的 dart:ui
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'movie_detail_sheet.dart'; // 🌟 引入海报面板
-import '../../services/tmdb_service.dart'; // 🌟 引入 TMDB 服务
+import 'movie_detail_sheet.dart';
+import '../../services/tmdb_service.dart';
+import '../../services/emby_service.dart'; // 🌟 引入刚写好的 Emby 服务
 
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
-import '../../services/live_activity_service.dart'; // 🚀 灵动岛服务
+import '../../services/live_activity_service.dart';
 
-// 引入详情页、添加页和骨架屏组件
 import 'torrent_detail_screen.dart';
 import 'add_torrent_sheet.dart';
-import '../../widgets/skeleton_card.dart'; // 🌟 引入骨架屏组件
+import '../../widgets/skeleton_card.dart';
 
 class TorrentListScreen extends StatefulWidget {
   const TorrentListScreen({super.key});
@@ -29,8 +29,10 @@ class TorrentListScreen extends StatefulWidget {
 class _TorrentListScreenState extends State<TorrentListScreen> {
   List<dynamic> _torrents = [];
   
-  // 🌟 新增：TMDB 内存缓存池 (Key 为种子的 hash)，避免列表滚动时疯狂请求
   final Map<String, Map<String, dynamic>> _tmdbCache = {};
+  
+  // 🌟 核心新增：用于记录每个种子上一次的下载进度，精准捕捉下载完成的瞬间
+  final Map<String, double> _previousProgress = {};
   
   bool _isLoggedIn = false;
   Timer? _timer;
@@ -90,21 +92,16 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 
-  // 🌟 新增：后台静默拉取海报数据
   void _fetchPostersBackground(List<dynamic> torrents) {
     for (var t in torrents) {
       final hash = t['hash'];
       final rawName = t['name'] ?? '';
 
       if (hash == null || rawName.isEmpty) continue;
-      
-      // 如果已经缓存过了（或者正在请求中，或者曾经请求失败），直接跳过！
       if (_tmdbCache.containsKey(hash)) continue;
 
-      // 标记为正在加载，防止下一次轮询重复触发
       _tmdbCache[hash] = {'status': 'loading'};
 
-      // 异步解析和请求
       final parsed = Utils.cleanFileName(rawName);
       TMDBService.searchMovie(parsed['title'], parsed['year']).then((movieData) {
         if (mounted) {
@@ -113,7 +110,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               _tmdbCache[hash] = movieData;
               _tmdbCache[hash]!['status'] = 'success';
             } else {
-              // 没搜到，标记为失败，以后不再搜
               _tmdbCache[hash] = {'status': 'failed'};
             }
           });
@@ -130,11 +126,36 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
 
     if (data != null && mounted) {
+      // 🌟 核心逻辑：检测是否有刚刚下载完成的任务，触发 Emby 扫库
+      for (var t in data) {
+        final hash = t['hash'];
+        final double progress = (t['progress'] ?? 0.0).toDouble();
+        final double? prevProgress = _previousProgress[hash];
+
+        // 如果之前的记录存在，且之前的进度 < 1.0 (未完成)，现在的进度 == 1.0 (已完成)
+        if (prevProgress != null && prevProgress < 1.0 && progress >= 1.0) {
+          final name = t['name'] ?? '任务';
+          
+          HapticFeedback.heavyImpact(); // 给个重重的震动反馈
+          Utils.showToast("🎉 [$name] 下载完成！正在通知 Emby...");
+          
+          // 🚀 触发后台 API 扫描 Emby
+          EmbyService.refreshLibrary();
+          
+          // 关闭可能存在的灵动岛显示
+          LiveActivityService.stop();
+        }
+
+        // 更新记录池里的进度
+        if (hash != null) {
+          _previousProgress[hash] = progress;
+        }
+      }
+
       setState(() {
         _torrents = data;
         _isLoggedIn = true;
       });
-      // 🌟 新增：每次成功拿到数据后，触发后台海报刮削
       _fetchPostersBackground(data);
     } else {
       setState(() => _isLoggedIn = false);
@@ -482,7 +503,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
             CupertinoPageRoute(
               builder: (context) => TorrentDetailScreen(
                 torrent: t,
-                // 将刮削好的数据传给详情页
                 movieData: _tmdbCache[hash]?['status'] == 'success' ? _tmdbCache[hash] : null,
               ),
             ),
@@ -528,7 +548,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-  // 🌟 核心重构：实现磨砂玻璃背景 (Glassmorphism) 与悬浮光晕
   Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
@@ -537,7 +556,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     final int eta = t['eta'] ?? 8640000;
     final String hash = t['hash'] ?? '';
     
-    // 🌟 提取原始名字和总大小
     final String rawName = t['name'] ?? '';
     final int totalSize = t['size'] ?? 0;
 
@@ -546,20 +564,16 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     final Color stateColor = stateConfig['color'];
     final String etaStr = (eta > 8000000 || eta < 0) ? "∞" : "${eta ~/ 60}m ${eta % 60}s";
 
-    // 🌟 计算格式化后的大小和画质标签
     final String sizeStr = Utils.formatBytes(totalSize);
     String quality = Utils.cleanFileName(rawName)['quality'] ?? 'HD';
 
-    // 🌟 自动分类：判断是否包含 4K 或 2160p
     final String rawNameUpper = rawName.toUpperCase();
     final bool is4K = rawNameUpper.contains('4K') || rawNameUpper.contains('2160P');
 
-    // 🌟 优化：如果提取出来的画质本身仅仅是 4K 或 2160p，为了不和红色 4K 标签重叠，我们清空蓝色画质标签
     if (is4K && (quality.toUpperCase() == '4K' || quality.toUpperCase() == '2160P')) {
       quality = '';
     }
 
-    // 尝试从缓存中读取 TMDB 数据
     final tmdbData = _tmdbCache[hash];
     final bool hasPoster = tmdbData != null && tmdbData['status'] == 'success';
     final String posterUrl = hasPoster ? tmdbData['poster_url'] : '';
@@ -568,20 +582,17 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? kCardColorDark : kCardColorLight,
-        // 🌟 核心调整：缩小卡片阴影，转而让海报本身承担悬浮感
         boxShadow: kMinimalShadow,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🎬 左侧：海报区域 (Glassmorphism & Floating Effect)
           if (hasPoster) ...[
             SizedBox(
               width: 76,
               height: 114,
               child: Stack(
                 children: [
-                  // 1. 磨砂玻璃背景层
                   Positioned.fill(
                     child: Transform.scale(
                       scale: 1.3,
@@ -609,8 +620,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       ),
                     ),
                   ),
-                  
-                  // 2. 海报底部阴影光晕
                   Positioned(
                     bottom: 0,
                     left: 6,
@@ -632,8 +641,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       ),
                     ),
                   ),
-
-                  // 3. 核心海报层
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(
@@ -660,7 +667,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
             const SizedBox(width: 14),
           ],
           
-          // 📊 右侧：核心数据面板
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -696,22 +702,19 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   ],
                 ),
                 
-                // 🌟 新增：大小、画质与评分信息的精美组合
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Wrap(
-                    spacing: 6, // 标签之间的水平间距
-                    runSpacing: 6, // 屏幕太小换行时的垂直间距
+                    spacing: 6,
+                    runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      // 如果有刮削数据，展示年份和评分
                       if (hasPoster)
                         Text(
                           "${tmdbData['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData['vote_average']}",
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       
-                      // 💾 大小标签 (Size Badge)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                         decoration: BoxDecoration(
@@ -721,7 +724,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
                       ),
                       
-                      // 🌟 自动分类：4K 红色专属标签
                       if (is4K)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -732,7 +734,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                           child: const Text('4K', style: TextStyle(fontSize: 10, color: Color(0xFFFF3B30), fontWeight: FontWeight.w800)),
                         ),
 
-                      // 🎬 原本的画质标签 (如果已经被红色 4K 替代，这里不会显示)
                       if (quality.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -820,6 +821,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 }
+
 
 // --- 筛选面板 (FilterSheet) ---
 class FilterSheet extends StatefulWidget {
