@@ -548,7 +548,16 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
 
     // 🌟 计算格式化后的大小和画质标签
     final String sizeStr = Utils.formatBytes(totalSize);
-    final String quality = Utils.cleanFileName(rawName)['quality'] ?? 'HD';
+    String quality = Utils.cleanFileName(rawName)['quality'] ?? 'HD';
+
+    // 🌟 自动分类：判断是否包含 4K 或 2160p
+    final String rawNameUpper = rawName.toUpperCase();
+    final bool is4K = rawNameUpper.contains('4K') || rawNameUpper.contains('2160P');
+
+    // 🌟 优化：如果提取出来的画质本身仅仅是 4K 或 2160p，为了不和红色 4K 标签重叠，我们清空蓝色画质标签
+    if (is4K && (quality.toUpperCase() == '4K' || quality.toUpperCase() == '2160P')) {
+      quality = '';
+    }
 
     // 尝试从缓存中读取 TMDB 数据
     final tmdbData = _tmdbCache[hash];
@@ -572,11 +581,10 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               height: 114,
               child: Stack(
                 children: [
-                  // 1. 磨砂玻璃背景层 (Glassmorphism Behind the Poster)
-                  // 在海报后面放一个模糊、放大的海报图像，根据海报主色调动态生成背景
+                  // 1. 磨砂玻璃背景层
                   Positioned.fill(
                     child: Transform.scale(
-                      scale: 1.3, // 稍微放大
+                      scale: 1.3,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.network(
@@ -590,21 +598,19 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       ),
                     ),
                   ),
-                  // 应用模糊效果
                   Positioned.fill(
                     child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10), // 模糊强度
+                      filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.black45 : Colors.white24, // 调整背景亮度
+                          color: isDark ? Colors.black45 : Colors.white24,
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
                     ),
                   ),
                   
-                  // 2. 海报底部阴影光晕 (Floating Glow)
-                  // 增加 blurRadius 让阴影更弥散，实现光晕感
+                  // 2. 海报底部阴影光晕
                   Positioned(
                     bottom: 0,
                     left: 6,
@@ -618,22 +624,21 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                             color: isDark 
                                 ? Colors.black.withOpacity(0.5) 
                                 : Colors.black.withOpacity(0.3), 
-                            blurRadius: 15, // 弥散半径
-                            spreadRadius: 2, // 扩展半径
-                            offset: const Offset(0, 8), // 底部偏移，增加悬浮感
+                            blurRadius: 15,
+                            spreadRadius: 2,
+                            offset: const Offset(0, 8),
                           )
                         ],
                       ),
                     ),
                   ),
 
-                  // 3. 核心海报层 (Main Poster)
+                  // 3. 核心海报层
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(
                       posterUrl,
                       fit: BoxFit.cover,
-                      // 🚀 终极防盗链破解：伪装成苹果手机浏览器 (与详情页保持一致)
                       headers: const {
                         "Referer": "https://javbee.co/", 
                         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
@@ -696,7 +701,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   padding: const EdgeInsets.only(top: 8),
                   child: Wrap(
                     spacing: 6, // 标签之间的水平间距
-                    runSpacing: 6, // 🌟 核心调整：屏幕太小换行时的垂直间距，让标签不拥挤
+                    runSpacing: 6, // 屏幕太小换行时的垂直间距
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       // 如果有刮削数据，展示年份和评分
@@ -716,20 +721,31 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
                       ),
                       
-                      // 🎬 画质标签 (Quality Badge)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: CupertinoColors.activeBlue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
+                      // 🌟 自动分类：4K 红色专属标签
+                      if (is4K)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF3B30).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('4K', style: TextStyle(fontSize: 10, color: Color(0xFFFF3B30), fontWeight: FontWeight.w800)),
                         ),
-                        child: Text(quality, style: const TextStyle(fontSize: 10, color: CupertinoColors.activeBlue, fontWeight: FontWeight.w600)),
-                      ),
+
+                      // 🎬 原本的画质标签 (如果已经被红色 4K 替代，这里不会显示)
+                      if (quality.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: CupertinoColors.activeBlue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(quality, style: const TextStyle(fontSize: 10, color: CupertinoColors.activeBlue, fontWeight: FontWeight.w600)),
+                        ),
                     ],
                   ),
                 ),
 
-                // 🌟 核心调整：在数据和进度条之间增加间距，让UI更呼吸
                 const SizedBox(height: 12),
                 
                 Row(
