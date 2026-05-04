@@ -1,28 +1,31 @@
+import 'dart:convert'; // 引入 json
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class EmbyService {
-  static Future<bool> refreshLibrary() async {
+  // 传入刚刚下载完成的任务名字
+  static Future<bool> processAndRefresh(String torrentName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      
       final customApiBaseUrl = prefs.getString('custom_api_url') ?? '';
       
-      if (customApiBaseUrl.isEmpty) {
-        print("⚠️ 未配置私有微服务地址，跳过 Emby 刷新");
-        return false;
-      }
+      if (customApiBaseUrl.isEmpty) return false;
 
-      final url = '$customApiBaseUrl/refresh-emby';
+      // 🚀 调用我们新写的自动化接口
+      final url = '$customApiBaseUrl/torrent-completed';
       
-      final response = await http.post(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        // 把任务名字作为 JSON 传过去
+        body: jsonEncode({"torrent_name": torrentName}),
+      ).timeout(const Duration(seconds: 10)); // 稍微延长超时，因为硬盘可能有 IO 延迟
       
       if (response.statusCode == 200) {
-        print("✅ 成功通过私有微服务触发 Emby 扫库！");
+        print("✅ 自动化处理成功: ${response.body}");
         return true;
       } else {
-        print("❌ 通知私有微服务失败，状态码: ${response.statusCode}");
+        print("❌ 自动化处理失败: ${response.statusCode} - ${response.body}");
         return false;
       }
     } catch (e) {
