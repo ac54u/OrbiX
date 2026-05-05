@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'movie_detail_sheet.dart';
 import '../../services/tmdb_service.dart';
-import '../../services/emby_service.dart'; // 🌟 引入刚写好的 Emby 服务
+import '../../services/emby_service.dart';
 
 import '../../core/constants.dart';
 import '../../core/utils.dart';
@@ -30,8 +30,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   List<dynamic> _torrents = [];
   
   final Map<String, Map<String, dynamic>> _tmdbCache = {};
-  
-  // 🌟 核心新增：用于记录每个种子上一次的下载进度，精准捕捉下载完成的瞬间
   final Map<String, double> _previousProgress = {};
   
   bool _isLoggedIn = false;
@@ -126,27 +124,19 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
 
     if (data != null && mounted) {
-      // 🌟 核心逻辑：检测是否有刚刚下载完成的任务，触发 Emby 扫库
       for (var t in data) {
         final hash = t['hash'];
         final double progress = (t['progress'] ?? 0.0).toDouble();
         final double? prevProgress = _previousProgress[hash];
 
-        // 如果之前的记录存在，且之前的进度 < 1.0 (未完成)，现在的进度 == 1.0 (已完成)
         if (prevProgress != null && prevProgress < 1.0 && progress >= 1.0) {
           final name = t['name'] ?? '任务';
-          
-          HapticFeedback.heavyImpact(); // 给个重重的震动反馈
+          HapticFeedback.heavyImpact();
           Utils.showToast("🎉 [$name] 下载完成！正在通知 Emby...");
-          
-          // 🚀 触发后台 API 扫描 Emby
           EmbyService.processAndRefresh(t['name']);
-          
-          // 关闭可能存在的灵动岛显示
           LiveActivityService.stop();
         }
 
-        // 更新记录池里的进度
         if (hash != null) {
           _previousProgress[hash] = progress;
         }
@@ -446,6 +436,19 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
           ),
           Container(height: 1, color: CupertinoColors.systemGrey5),
           CupertinoContextMenuAction(
+            trailingIcon: CupertinoIcons.wand_rays,
+            child: const Text("手动整理与入库"),
+            onPressed: () {
+              Navigator.pop(context);
+              final name = t['name'] ?? '';
+              if (name.isNotEmpty) {
+                HapticFeedback.lightImpact();
+                Utils.showToast("已发送整理指令: $name");
+                EmbyService.processAndRefresh(name);
+              }
+            },
+          ),
+          CupertinoContextMenuAction(
             isDestructiveAction: true,
             trailingIcon: CupertinoIcons.trash,
             child: const Text("删除任务"),
@@ -592,37 +595,34 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               width: 76,
               height: 114,
               child: Stack(
+                clipBehavior: Clip.none, // 🌟 关键：允许底层光晕溢出盒子！
                 children: [
+                  // 🌟 1. 环境光晕层 (Ambient Glow)
+                  // 彻底抛弃 BackdropFilter，改用极其安全的 ImageFiltered
                   Positioned.fill(
                     child: Transform.scale(
-                      scale: 1.3,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          posterUrl,
-                          fit: BoxFit.cover,
-                          headers: const {
-                            "Referer": "https://javbee.co/", 
-                            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  
-                  // 🌟🌟🌟 修复点：在这里用 ClipRRect 把 BackdropFilter 包起来，防止滑动漏气！
-                  Positioned.fill(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: BackdropFilter(
-                        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      scale: 1.2, // 放大约1.2倍，让颜色溢出到周围
+                      child: ImageFiltered(
+                        imageFilter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                         child: Container(
-                          color: isDark ? Colors.black45 : Colors.white24,
+                          foregroundDecoration: BoxDecoration(
+                            // 加一层半透明遮罩，防止光晕过亮刺眼
+                            color: isDark ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.2),
+                          ),
+                          child: Image.network(
+                            posterUrl,
+                            fit: BoxFit.cover,
+                            headers: const {
+                              "Referer": "https://javbee.co/", 
+                              "User-Agent": "Mozilla/5.0",
+                            },
+                          ),
                         ),
                       ),
                     ),
                   ),
                   
+                  // 2. 海报底部物理阴影
                   Positioned(
                     bottom: 0,
                     left: 6,
@@ -644,6 +644,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       ),
                     ),
                   ),
+
+                  // 3. 核心清晰海报层
                   Positioned.fill(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
@@ -652,7 +654,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         fit: BoxFit.cover,
                         headers: const {
                           "Referer": "https://javbee.co/", 
-                          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+                          "User-Agent": "Mozilla/5.0",
                         },
                         errorBuilder: (context, error, stackTrace) => Container(
                           decoration: BoxDecoration(
@@ -669,7 +671,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 14), // 留出一点空间给溢出的光晕
           ],
           
           Expanded(
