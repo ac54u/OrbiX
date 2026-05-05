@@ -293,6 +293,29 @@ class ApiService {
     }
   }
 
+  // 🌟 新增：修改种子保存路径（移动文件）功能
+  static Future<String?> setLocation(String hash, String location) async {
+    _ensureInit();
+    try {
+      final u = await _url();
+      if (u == null) return "未连接到服务器";
+      final opts = await _getOptions();
+
+      final body = 'hashes=$hash&location=${Uri.encodeComponent(location)}';
+
+      final r = await _dio.post(
+        '$u/api/v2/torrents/setLocation',
+        data: body,
+        options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
+      );
+
+      if (r.statusCode == 200) return null;
+      return "HTTP ${r.statusCode}";
+    } catch (e) {
+      return "网络请求异常";
+    }
+  }
+
   static Future<Map<String, dynamic>?> getMainData() async {
     _ensureInit();
     try {
@@ -606,7 +629,7 @@ class ApiService {
   }
 
   // ==========================================
-  // --- Sonarr 剧集联动 API (新增) ---
+  // --- Sonarr 剧集联动 API ---
   // ==========================================
 
   /// 🔍 搜索 Sonarr 剧集

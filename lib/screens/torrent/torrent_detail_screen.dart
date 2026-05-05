@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
@@ -8,7 +9,7 @@ import '../../services/api_service.dart';
 class TorrentDetailScreen extends StatefulWidget {
   final dynamic torrent;
   // 从列表页传过来的刮削数据
-  final Map<String, dynamic>? movieData; 
+  final Map<String, dynamic>? movieData;
 
   const TorrentDetailScreen({super.key, required this.torrent, this.movieData});
 
@@ -23,9 +24,13 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   bool _loading = true;
   Timer? _timer;
 
+  // 记录最新的 torrent 数据，方便迁移路径后页面刷新
+  late dynamic _currentTorrent;
+
   @override
   void initState() {
     super.initState();
+    _currentTorrent = widget.torrent;
     _refreshData();
     _timer = Timer.periodic(const Duration(seconds: 3), (_) => _refreshData());
   }
@@ -37,7 +42,17 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   }
 
   void _refreshData() async {
-    final hash = widget.torrent['hash'];
+    final hash = _currentTorrent['hash'];
+
+    // 定期刷新基础信息，确保路径和状态是最新的
+    final tData = await ApiService.getTorrents(filter: 'all');
+    if (tData != null && mounted) {
+      final updated = tData.firstWhere((e) => e['hash'] == hash, orElse: () => null);
+      if (updated != null) {
+        setState(() => _currentTorrent = updated);
+      }
+    }
+
     if (_segIndex == 2) {
       final f = await ApiService.getTorrentFiles(hash);
       if (mounted && f != null) setState(() => _files = f);
@@ -48,9 +63,80 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  // 🌟 唤出高级感路径迁移面板
+  void _showMoveLocationSheet(String hash, String currentPath, bool isDark) {
+    final TextEditingController pathCtrl = TextEditingController(text: currentPath);
+
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: isDark ? kCardColorDark : kBgColorLight,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("迁移文件位置", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
+              const SizedBox(height: 8),
+              const Text("将此任务的数据移动到服务器上的新文件夹", style: TextStyle(fontSize: 13, color: Colors.grey)),
+              const SizedBox(height: 20),
+              CupertinoTextField(
+                controller: pathCtrl,
+                prefix: const Padding(
+                  padding: EdgeInsets.only(left: 12),
+                  child: Icon(CupertinoIcons.folder, color: Colors.grey, size: 20),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white10 : const Color(0xFFF2F2F7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                clearButtonMode: OverlayVisibilityMode.editing,
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton.filled(
+                  child: const Text("确认迁移", style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: () async {
+                    final newPath = pathCtrl.text.trim();
+                    if (newPath.isEmpty || newPath == currentPath) {
+                      Navigator.pop(ctx);
+                      return;
+                    }
+                    Navigator.pop(ctx); // 关闭弹窗
+
+                    HapticFeedback.mediumImpact();
+                    Utils.showToast("正在发送迁移指令...");
+
+                    // 🚀 调用刚刚在 ApiService 新增的接口
+                    final error = await ApiService.setLocation(hash, newPath);
+                    if (error == null) {
+                       HapticFeedback.lightImpact();
+                       Utils.showToast("✅ 迁移已开始");
+                       _refreshData(); // 刷新页面数据
+                    } else {
+                       Utils.showToast("❌ 迁移失败: $error");
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final t = widget.torrent;
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
       builder: (context, isDark, child) {
@@ -93,7 +179,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              Expanded(child: _buildContent(t, isDark)),
+              Expanded(child: _buildContent(_currentTorrent, isDark)),
             ],
           ),
         );
@@ -126,12 +212,11 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
     );
 
     final movieData = widget.movieData;
+    final savePath = t['save_path'] ?? '/downloads';
 
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        // 🎬 海报已按照要求移除，页面直接从信息卡片开始
-
         // 📊 1. 基本信息卡片
         CupertinoListSection.insetGrouped(
           backgroundColor: Colors.transparent,
@@ -142,7 +227,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           ),
           header: Text("基本信息", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey)),
           children: [
-            // 优先显示刮削到的标题，否则显示文件名
             _row("名称", movieData?['title'] ?? t['name'], isDark, bold: true),
             _row("大小", Utils.formatBytes(t['size'] ?? 0), isDark),
             _row("进度", "${((t['progress'] ?? 0) * 100).toStringAsFixed(1)}%", isDark),
@@ -155,7 +239,77 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           ],
         ),
 
-        // 📉 2. 传输数据卡片
+        // 📁 2. 🌟 核心新增：存储位置与迁移卡片
+        CupertinoListSection.insetGrouped(
+          backgroundColor: Colors.transparent,
+          margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          decoration: BoxDecoration(
+            color: isDark ? kCardColorDark : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          header: Text("存储与路径", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey)),
+          children: [
+            GestureDetector(
+              onTap: () => _showMoveLocationSheet(t['hash'], savePath, isDark),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.transparent, // 保证整个区域可点击
+                child: Row(
+                  children: [
+                    // 高级感的带底色图标
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: CupertinoColors.activeBlue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(CupertinoIcons.folder_fill, color: CupertinoColors.activeBlue, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    // 路径信息
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("当前位置", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          const SizedBox(height: 2),
+                          Text(
+                            savePath,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isDark ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.w500
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // 胶囊样式的操作按钮
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Text("迁移", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.black54)),
+                          const SizedBox(width: 4),
+                          Icon(CupertinoIcons.arrow_right_arrow_left, size: 12, color: isDark ? Colors.white70 : Colors.black54),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        // 📉 3. 传输数据卡片
         CupertinoListSection.insetGrouped(
           backgroundColor: Colors.transparent,
           margin: const EdgeInsets.fromLTRB(16, 4, 16, 20),
