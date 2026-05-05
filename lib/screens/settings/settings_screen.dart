@@ -33,8 +33,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _pingMs = 0;
   Timer? _timer;
 
-  final _pathCtrl = TextEditingController();
-
   // 🚀 所有搜刮器和媒体库的控制器
   final _prowlarrUrlCtrl = TextEditingController();
   final _prowlarrKeyCtrl = TextEditingController();
@@ -45,7 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _embyUrlCtrl = TextEditingController();
   final _embyKeyCtrl = TextEditingController();
   final _tmdbKeyCtrl = TextEditingController();
-  
+
   // 🌟 新增：私有微服务 API 控制器
   final _customApiCtrl = TextEditingController();
 
@@ -60,7 +58,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    _pathCtrl.dispose();
     _prowlarrUrlCtrl.dispose();
     _prowlarrKeyCtrl.dispose();
     _radarrUrlCtrl.dispose();
@@ -70,7 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _embyUrlCtrl.dispose();
     _embyKeyCtrl.dispose();
     _tmdbKeyCtrl.dispose();
-    
+
     // 🌟 销毁新增的控制器
     _customApiCtrl.dispose();
     super.dispose();
@@ -107,7 +104,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _loginTime = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
       }
       _refreshInterval = prefs.getInt('refresh_rate') ?? 3;
-      _pathCtrl.text = prefs.getString('default_path') ?? "/data/Movies";
       _cellularWarn = prefs.getBool('cellular_warn') ?? true;
 
       // 读取本地存储的各项配置
@@ -125,26 +121,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _embyKeyCtrl.text = prefs.getString('emby_api_key') ?? '';
 
       _tmdbKeyCtrl.text = prefs.getString('tmdb_key') ?? '';
-      
+
       // 🌟 读取私有微服务 API 地址
       _customApiCtrl.text = prefs.getString('custom_api_url') ?? '';
     });
-  }
-
-  Future<void> _saveDownloadPath() async {
-    FocusScope.of(context).unfocus();
-    if (_pathCtrl.text.isEmpty) {
-      Utils.showToast("路径不能为空");
-      return;
-    }
-    bool success = await ApiService.setPreferences(savePath: _pathCtrl.text);
-    if (success) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('default_path', _pathCtrl.text);
-      Utils.showToast("✅ 默认路径已更新");
-    } else {
-      Utils.showToast("❌ 更新失败，请检查连接或权限");
-    }
   }
 
   // 保存所有手动配置的参数
@@ -159,7 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await p.setString('emby_url', _embyUrlCtrl.text.trim());
     await p.setString('emby_api_key', _embyKeyCtrl.text.trim());
     await p.setString('tmdb_key', _tmdbKeyCtrl.text.trim());
-    
+
     // 🌟 移除首尾空格并保存私有微服务地址
     await p.setString('custom_api_url', _customApiCtrl.text.trim());
 
@@ -353,52 +333,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       ),
-
-                    const Padding(
-                      padding: EdgeInsets.only(left: 32, bottom: 8, top: 16),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text("下载设置", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                      ),
-                    ),
-                    CupertinoListSection.insetGrouped(
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      backgroundColor: Colors.transparent,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("默认保存路径", style: TextStyle(fontSize: 13, color: isDark ? Colors.white54 : Colors.grey)),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: CupertinoTextField(
-                                      controller: _pathCtrl,
-                                      placeholder: "/downloads",
-                                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                                      clearButtonMode: OverlayVisibilityMode.editing,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  CupertinoButton(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                                    color: CupertinoColors.activeBlue,
-                                    minSize: 32,
-                                    onPressed: _saveDownloadPath,
-                                    child: const Text("保存", style: TextStyle(fontSize: 14, color: Colors.white)),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              const Text("提示: 请务必填写服务器(或Docker容器)内部的真实路径", style: TextStyle(fontSize: 11, color: Colors.grey)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
 
                     const Padding(
                       padding: EdgeInsets.only(left: 32, bottom: 8, top: 16),
