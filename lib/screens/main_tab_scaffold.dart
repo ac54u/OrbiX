@@ -24,6 +24,9 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
   Timer? _notificationTimer;
   // 记录每个任务的上一次状态 {hash: state}
   final Map<String, String> _lastStates = {};
+  
+  // 记录当前选中的 Tab
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -99,7 +102,12 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
   }
 
   void _onTap(int index) {
-    HapticFeedback.lightImpact();
+    if (_currentIndex != index) {
+      HapticFeedback.lightImpact(); // 轻微震动反馈
+      setState(() {
+        _currentIndex = index;
+      });
+    }
   }
 
   @override
@@ -110,32 +118,43 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
         return CupertinoTabScaffold(
           tabBar: CupertinoTabBar(
             onTap: _onTap,
-            backgroundColor: isDark
-                ? const Color(0xCC1C1C1E)
-                : const Color(0xCCFFFFFF),
-            activeColor: kPrimaryColor,
-            inactiveColor: Colors.grey,
+            currentIndex: _currentIndex,
+            // 🌟 更柔和的毛玻璃背景调色
+            backgroundColor: isDark 
+                ? const Color(0xE6141414) // 深色模式下更深邃的半透明黑
+                : const Color(0xE6F8F8F8), // 浅色模式下纯净的半透明灰白
+            activeColor: CupertinoColors.activeBlue, // 采用更原生的系统蓝
+            inactiveColor: CupertinoColors.systemGrey, // 采用标准的系统灰
             border: Border(
               top: BorderSide(
-                color: isDark ? Colors.white10 : const Color(0x1A000000),
-                width: 0.0,
+                color: isDark ? Colors.white10 : Colors.black12,
+                width: 0.5, // 细细的一条顶边线，更显精致
               ),
             ),
-            items: const [
+            items: [
+              // 🌟 1. 下载 Tab
               BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.arrow_down_circle_fill),
+                icon: const Icon(CupertinoIcons.arrow_down_circle, size: 26),
+                activeIcon: const Icon(CupertinoIcons.arrow_down_circle_fill, size: 28),
                 label: "下载",
               ),
+              // 🌟 2. 统计 Tab
               BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.graph_square_fill),
+                icon: const Icon(CupertinoIcons.chart_bar, size: 26),
+                activeIcon: const Icon(CupertinoIcons.chart_bar_fill, size: 28),
                 label: "统计",
               ),
+              // 🌟 3. 搜索 Tab
               BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.search),
+                icon: const Icon(CupertinoIcons.search, size: 26),
+                // 搜索通常没有对应的 fill 图标，用加粗和微小放大来区分状态
+                activeIcon: const Icon(CupertinoIcons.search, size: 28),
                 label: "搜索",
               ),
+              // 🌟 4. 设置 Tab
               BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.gear_solid),
+                icon: const Icon(CupertinoIcons.gear_alt, size: 26),
+                activeIcon: const Icon(CupertinoIcons.gear_alt_fill, size: 28),
                 label: "设置",
               ),
             ],
