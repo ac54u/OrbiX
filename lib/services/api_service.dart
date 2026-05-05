@@ -293,14 +293,13 @@ class ApiService {
     }
   }
 
-  // 🌟 新增：修改种子保存路径（移动文件）功能
   static Future<String?> setLocation(String hash, String location) async {
     _ensureInit();
     try {
       final u = await _url();
       if (u == null) return "未连接到服务器";
       final opts = await _getOptions();
-
+      
       final body = 'hashes=$hash&location=${Uri.encodeComponent(location)}';
 
       final r = await _dio.post(
@@ -308,7 +307,7 @@ class ApiService {
         data: body,
         options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
       );
-
+      
       if (r.statusCode == 200) return null;
       return "HTTP ${r.statusCode}";
     } catch (e) {
@@ -632,7 +631,6 @@ class ApiService {
   // --- Sonarr 剧集联动 API ---
   // ==========================================
 
-  /// 🔍 搜索 Sonarr 剧集
   static Future<List<dynamic>> searchSonarr(String query) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('sonarr_url');
@@ -652,14 +650,12 @@ class ApiService {
     }
   }
 
-  /// ✅ 将剧集添加到 Sonarr 监控并自动搜索下载
   static Future<bool> addSeriesToSonarr(Map<String, dynamic> seriesData) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('sonarr_url');
     final key = p.getString('sonarr_key');
 
     try {
-      // 1. 获取基础配置
       final profilesResp = await _dio.get(
         '$url/api/v3/qualityprofile',
         options: Options(headers: {'X-Api-Key': key}),
@@ -669,7 +665,7 @@ class ApiService {
         options: Options(headers: {'X-Api-Key': key}),
       );
       final languageResp = await _dio.get(
-        '$url/api/v3/languageprofile', // Sonarr v3 需要语言配置
+        '$url/api/v3/languageprofile', 
         options: Options(headers: {'X-Api-Key': key}),
       );
 
@@ -677,12 +673,10 @@ class ApiService {
         throw "Sonarr 端缺少基础配置(质量配置或根目录)";
       }
 
-      // 2. 提取默认配置的 ID
       final profileId = profilesResp.data[0]['id'];
       final rootPath = foldersResp.data[0]['path'];
       final languageProfileId = (languageResp.data as List).isNotEmpty ? languageResp.data[0]['id'] : 1;
 
-      // 3. 组装提交给 Sonarr 的 Payload
       final payload = {
         ...seriesData,
         'qualityProfileId': profileId,
@@ -690,11 +684,10 @@ class ApiService {
         'rootFolderPath': rootPath,
         'monitored': true,
         'addOptions': {
-          'searchForMissingEpisodes': true // 添加后立即搜索缺失的剧集
+          'searchForMissingEpisodes': true
         }
       };
 
-      // 4. 发送添加请求
       final r = await _dio.post(
         '$url/api/v3/series',
         data: payload,
@@ -706,5 +699,83 @@ class ApiService {
       print("添加至 Sonarr 失败: $e");
       return false;
     }
+  }
+
+  // ==========================================
+  // --- 🌟 Radarr 交互式搜索联动 API (新增) ---
+  // ==========================================
+
+  /// 1. 获取特定电影的所有可用种子资源 (Interactive Search)
+  static Future<List<dynamic>> getRadarrReleases(int movieId) async {
+    final p = await SharedPreferences.getInstance();
+    final url = p.getString('radarr_url');
+    final key = p.getString('radarr_key');
+
+    try {
+      final r = await _dio.get(
+        '$url/api/v3/release',
+        queryParameters: {'movieId': movieId},
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+      return r.data as List<dynamic>;
+    } catch (e) {
+      print("获取 Radarr Release 失败: $e");
+      return [];
+    }
+  }
+
+  /// 2. 推送选中的资源到下载器
+  static Future<bool> downloadRadarrRelease(Map<String, dynamic> release) async {
+    final p = await SharedPreferences.getInstance();
+    final url = p.getString('radarr_url');
+    final key = p.getString('radarr_key');
+
+    try {
+      final r = await _dio.post(
+        '$url/api/v3/release',
+        data: release,
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+      return r.statusCode == 201 || r.statusCode == 200;
+    } catch (e) {
+      print("推送下载失败: $e");
+      return false;
+    }
+  }
+  
+  /// 3. (辅助) 将电影加入 Radarr 库以解锁 Interactive Search
+  static Future<int?> ensureMovieInRadarr(Map<String, dynamic> movieData) async {
+    final p = await SharedPreferences.getInstance();
+    final url = p.getString('radarr_url');
+    final key = p.getString('radarr_key');
+    
+    try {
+      final checkResp = await _dio.get(
+        '$url/api/v3/movie',
+        queryParameters: {'tmdbId': movieData['tmdbId']},
+        options: Options(headers: {'X-Api-Key': key}),
+      );
+      
+      if ((checkResp.data as List).isNotEmpty) {
+        return checkResp.data[0]['id'];
+      }
+      
+      // 不存在则添加，拿到 Radarr 内部的 movieId (这里我们不让它自动搜种子)
+      final tempMovieData = Map<String, dynamic>.from(movieData);
+      tempMovieData['addOptions'] = {'searchForMovie': false}; // 🌟 覆盖默认配置，防止全自动抢跑
+      
+      bool added = await addMovieToRadarr(tempMovieData);
+      if (added) {
+        final recheck = await _dio.get(
+          '$url/api/v3/movie',
+          queryParameters: {'tmdbId': movieData['tmdbId']},
+          options: Options(headers: {'X-Api-Key': key}),
+        );
+        return recheck.data[0]['id'];
+      }
+    } catch (e) {
+      print("检查/添加电影失败: $e");
+    }
+    return null;
   }
 }
