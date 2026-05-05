@@ -6,7 +6,8 @@ import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
 import 'movie_detail_screen.dart';
-import 'radarr_movie_detail_screen.dart'; // 引入 Radarr 详情页
+import 'radarr_movie_detail_screen.dart'; 
+import 'interactive_search_screen.dart'; // 🌟 引入刚写好的交互式搜索页
 
 class SearchScreen extends StatefulWidget {
   final String? initialQuery;
@@ -121,13 +122,28 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  // 🌟 核心修改：接入全新的交互式搜索逻辑
   Future<void> _sendToRadarr(dynamic movie) async {
-    Utils.showToast("正在通知 Radarr 自动下载...");
-    final success = await ApiService.addMovieToRadarr(movie);
-    if (success) {
-      Utils.showToast("🎬 已入库！Radarr 正在寻星下载");
+    HapticFeedback.lightImpact();
+    Utils.showToast("正在初始化交互式搜索...");
+    
+    // 1. 确保电影在 Radarr 库里，并拿到它在 Radarr 内部的 ID
+    final movieId = await ApiService.ensureMovieInRadarr(movie);
+    
+    if (movieId != null) {
+      if (!mounted) return;
+      // 2. 跳转到我们刚写好的手动挑选卡片页
+      Navigator.push(
+        context,
+        CupertinoPageRoute(
+          builder: (context) => InteractiveSearchScreen(
+            movieId: movieId,
+            movieTitle: movie['title'] ?? "未知电影",
+          ),
+        ),
+      );
     } else {
-      Utils.showToast("❌ 添加失败，该电影可能已存在，或 Radarr 配置有误");
+      Utils.showToast("❌ Radarr 库同步失败，请检查配置");
     }
   }
 
@@ -337,7 +353,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // --- 新增的 Radarr 电影卡片 UI 附带点击跳转 ---
+  // --- Radarr 电影卡片 UI 附带点击跳转 ---
   Widget _buildRadarrItem(dynamic item, bool isDark) {
     // 获取电影海报
     String posterUrl = '';
@@ -415,8 +431,15 @@ class _SearchScreenState extends State<SearchScreen> {
                             color: CupertinoColors.activeGreen.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(20),
                             minSize: 30,
-                            onPressed: null, // 已存在的禁用点击
-                            child: const Text("已在库中", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: CupertinoColors.activeGreen)),
+                            onPressed: () => _sendToRadarr(item), // 🌟 即使已在库中，点击也可直接跳转选种子
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(CupertinoIcons.checkmark_alt, size: 16, color: CupertinoColors.activeGreen),
+                                SizedBox(width: 4),
+                                Text("挑选种子", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: CupertinoColors.activeGreen)),
+                              ],
+                            ),
                           )
                         : CupertinoButton(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -427,9 +450,9 @@ class _SearchScreenState extends State<SearchScreen> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: const [
-                                Icon(CupertinoIcons.add_circled_solid, size: 16, color: Color(0xFFFF9500)),
+                                Icon(CupertinoIcons.search, size: 16, color: Color(0xFFFF9500)),
                                 SizedBox(width: 4),
-                                Text("委托 Radarr", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF9500))),
+                                Text("挑选种子", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF9500))),
                               ],
                             ),
                           ),
