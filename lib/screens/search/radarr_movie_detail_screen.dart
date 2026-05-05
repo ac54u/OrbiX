@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart'; // 🌟 震动反馈需要
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/api_service.dart';
+import 'interactive_search_screen.dart'; // 🌟 引入刚写好的交互式搜索页
 
 class RadarrMovieDetailScreen extends StatefulWidget {
   final dynamic movie;
@@ -16,7 +18,7 @@ class RadarrMovieDetailScreen extends StatefulWidget {
 class _RadarrMovieDetailScreenState extends State<RadarrMovieDetailScreen> {
   bool _isAdding = false;
 
-  // 新增：Emby 状态变量
+  // Emby 状态变量
   String? _embyItemId;
   bool _isCheckingEmby = true;
 
@@ -26,7 +28,7 @@ class _RadarrMovieDetailScreenState extends State<RadarrMovieDetailScreen> {
     _checkEmbyStatus();
   }
 
-  // 新增：自动查询 Emby 状态
+  // 自动查询 Emby 状态
   Future<void> _checkEmbyStatus() async {
     final tmdbId = widget.movie['tmdbId']?.toString();
     if (tmdbId != null && tmdbId.isNotEmpty) {
@@ -72,19 +74,37 @@ class _RadarrMovieDetailScreenState extends State<RadarrMovieDetailScreen> {
     return 0.0;
   }
 
-  Future<void> _addToRadarr() async {
+  // 🌟 核心修改：接入全新的交互式搜索跳转逻辑
+  Future<void> _sendToRadarr() async {
     setState(() => _isAdding = true);
-    final success = await ApiService.addMovieToRadarr(widget.movie);
-    setState(() => _isAdding = false);
+    HapticFeedback.lightImpact();
+    Utils.showToast("正在初始化交互式搜索...");
+
+    final movieId = await ApiService.ensureMovieInRadarr(widget.movie);
     
-    if (success) {
-      Utils.showToast("🎬 已成功加入 Radarr！");
+    if (mounted) {
+      setState(() => _isAdding = false);
+    }
+
+    if (movieId != null) {
+      if (!mounted) return;
       // 更新本地状态，变为已添加
       setState(() {
         widget.movie['added'] = DateTime.now().toIso8601String();
       });
+      
+      // 跳转到挑选卡片页
+      Navigator.push(
+        context,
+        CupertinoPageRoute(
+          builder: (context) => InteractiveSearchScreen(
+            movieId: movieId,
+            movieTitle: widget.movie['title'] ?? "未知电影",
+          ),
+        ),
+      );
     } else {
-      Utils.showToast("❌ 添加失败，可能已存在或配置有误");
+      Utils.showToast("❌ Radarr 库同步失败，请检查配置");
     }
   }
 
@@ -256,7 +276,7 @@ class _RadarrMovieDetailScreenState extends State<RadarrMovieDetailScreen> {
                           
                           const SizedBox(height: 40),
 
-                          // 4. 底部大按钮 (已升级为支持 Emby 判断)
+                          // 4. 底部大按钮 (已全面升级)
                           SizedBox(
                             width: double.infinity,
                             height: 50,
@@ -279,14 +299,23 @@ class _RadarrMovieDetailScreenState extends State<RadarrMovieDetailScreen> {
                                     // 状态 2：Emby 没有，但在 Radarr 库里
                                     : isAdded
                                         ? CupertinoButton(
-                                            color: CupertinoColors.activeGreen.withOpacity(0.1),
-                                            onPressed: null,
-                                            child: const Text("已在 Radarr 库中 (等待下载)", style: TextStyle(fontWeight: FontWeight.bold, color: CupertinoColors.activeGreen, fontSize: 14)),
+                                            color: CupertinoColors.activeBlue, // 用蓝色表示可以挑选其他版本
+                                            onPressed: _isAdding ? null : _sendToRadarr,
+                                            child: _isAdding 
+                                              ? const CupertinoActivityIndicator(color: Colors.white)
+                                              : Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: const [
+                                                    Icon(CupertinoIcons.search_circle_fill, color: Colors.white),
+                                                    SizedBox(width: 8),
+                                                    Text("挑选种子 (已在库中)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                                                  ],
+                                                ),
                                           )
-                                        // 状态 3：库里也没有，显示下载按钮
+                                        // 状态 3：库里也没有，显示添加并选种子按钮
                                         : CupertinoButton(
                                             color: const Color(0xFFFF9500),
-                                            onPressed: _isAdding ? null : _addToRadarr,
+                                            onPressed: _isAdding ? null : _sendToRadarr,
                                             child: _isAdding 
                                               ? const CupertinoActivityIndicator(color: Colors.white)
                                               : Row(
@@ -294,7 +323,7 @@ class _RadarrMovieDetailScreenState extends State<RadarrMovieDetailScreen> {
                                                   children: const [
                                                     Icon(CupertinoIcons.cloud_download, color: Colors.white),
                                                     SizedBox(width: 8),
-                                                    Text("委托 Radarr 下载", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                                                    Text("委托 Radarr 并挑选种子", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                                                   ],
                                                 ),
                                           ),
