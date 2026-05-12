@@ -1,5 +1,5 @@
-import 'dart:io'; // 🌟 新增：处理底层网络请求
-import 'package:dio/io.dart'; // 🌟 新增：Dio 的 IO 适配器
+import 'dart:io'; 
+import 'package:dio/io.dart'; 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,7 +24,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
   List<Map<String, String>> _resources = [];
   String _errorMessage = "";
 
-  // 🌟 持久化 Cookie 存储
   static String? _busCookie;
 
   String _currentEngine = '141jav';
@@ -59,14 +58,13 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
 
   Map<String, String> get _activeCategories => _currentEngine == '141jav' ? _categories141 : _categoriesBus;
 
-  // 🌟 核心封装：获取一个无视 SSL 证书报错的“无敌版” Dio
+  // 🌟 修复：利用 Dart 类型推导，解决 dart:io 和 webview_flutter 之间的 X509Certificate 命名冲突
   Dio _getBypassDio() {
     final dio = Dio();
     dio.httpClientAdapter = IOHttpClientAdapter(
       createHttpClient: () {
         final client = HttpClient();
-        // 关键护甲：无论遇到什么烂证书、代理劫持，一律放行！
-        client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+        client.badCertificateCallback = (cert, host, port) => true;
         return client;
       },
     );
@@ -81,7 +79,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     });
 
     try {
-      final dio = _getBypassDio(); // 🌟 使用无敌版 Dio
+      final dio = _getBypassDio();
       final headers = {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
         "Accept": "text/html,application/xhtml+xml,application/xml",
@@ -247,7 +245,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     } else {
       Utils.showToast("正在后台深度嗅探磁力链...");
       try {
-        final dio = _getBypassDio(); // 🌟 这里也换成无敌版 Dio
+        final dio = _getBypassDio();
         final headers = {
           "User-Agent": "Mozilla/5.0",
           "Cookie": _busCookie ?? "existmag=all; age_verified=1; over18=1",
