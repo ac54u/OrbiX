@@ -35,7 +35,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     });
 
     try {
-      // 🌟 强化请求头，尽可能伪装成真实的 Safari
       final response = await Dio().get(
         'https://www.141jav.com/',
         options: Options(
@@ -53,53 +52,77 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       }
 
       var document = html_parser.parse(response.data);
-
-      // 🌟 获取网页真实的 Title，用来侦测是否被 Cloudflare 拦截
       String pageTitle = document.querySelector('title')?.text.trim() ?? '无标题';
 
       if (pageTitle.toLowerCase().contains('cloudflare') || pageTitle.toLowerCase().contains('just a moment')) {
-        throw "遭遇 Cloudflare 5秒盾拦截，纯接口无法绕过。";
+        throw "遭遇 Cloudflare 5秒盾拦截，请稍后再试。";
       }
 
-      var magnetLinks = document.querySelectorAll('a[href^="magnet:?"]');
       List<Map<String, String>> parsedData = [];
 
-      for (var link in magnetLinks) {
-        var container = link.parent;
-        int depth = 0;
-        while (container != null && depth < 5) {
-          if (container.localName == 'div' || container.localName == 'article' || container.localName == 'li') {
-            break;
-          }
-          container = container.parent;
-          depth++;
+      // 🌟 终极万能嗅探法：以海报图片为基准，逆推寻找外层卡片容器
+      var allImages = document.querySelectorAll('img');
+
+      for (var img in allImages) {
+        String poster = img.attributes['src'] ?? '';
+        // 过滤掉头像、Logo 等干扰图片
+        if (poster.isEmpty || poster.contains('avatar') || poster.contains('logo') || poster.contains('icon')) continue;
+
+        // 补全图片绝对路径
+        if (poster.startsWith('//')) {
+          poster = 'https:$poster';
+        } else if (poster.startsWith('/')) {
+          poster = 'https://www.141jav.com$poster';
         }
 
-        if (container != null) {
-          var imgNode = container.querySelector('img');
-          var titleNode = container.querySelector('h1, h2, h3, h4, h5, p > a, a[title]');
+        var container = img.parent;
+        int depth = 0;
+        bool found = false;
 
-          String poster = imgNode?.attributes['src'] ?? '';
-          if (poster.startsWith('//')) poster = 'https:$poster';
+        // 向外层遍历 7 层 DOM 树，寻找包含该海报的“卡片”盒子
+        while (container != null && depth < 7) {
+          // 在这个盒子里寻找所有的 <a> 链接
+          var links = container.querySelectorAll('a');
+          for (var link in links) {
+            String href = link.attributes['href'] ?? '';
+            // 只要链接里带有 magnet, .torrent, 或者 /torrent/，全部视为目标！
+            if (href.startsWith('magnet:') || href.contains('.torrent') || href.contains('/torrent/')) {
 
-          String title = titleNode?.text.trim() ?? titleNode?.attributes['title'] ?? '未知番号资源';
-          String magnet = link.attributes['href'] ?? '';
+              String magnetUrl = href;
+              // 如果是相对路径的种子链接，补全域名 (qBittorrent 支持直接添加 http 种子链接)
+              if (magnetUrl.startsWith('/')) magnetUrl = 'https://www.141jav.com$magnetUrl';
 
-          if (magnet.isNotEmpty && poster.isNotEmpty && !parsedData.any((e) => e['magnet'] == magnet)) {
-            parsedData.add({
-              'title': title,
-              'poster': poster,
-              'magnet': magnet,
-            });
+              // 找标题 (尝试匹配常见的 h1~h5 或者带 title 属性的标签)
+              var titleNode = container.querySelector('h1, h2, h3, h4, h5, .title, p > a, a[title]');
+              String title = titleNode?.text.trim() ?? titleNode?.attributes['title'] ?? '未知番号';
+              // 很多网站标题喜欢放在 a 标签内部，清理掉换行符
+              title = title.replaceAll('\n', ' ').trim();
+              if (title.isEmpty) title = '未命名资源';
+
+              // 去重加入列表
+              if (!parsedData.any((e) => e['magnet'] == magnetUrl)) {
+                parsedData.add({
+                  'title': title,
+                  'poster': poster,
+                  'magnet': magnetUrl,
+                });
+              }
+              found = true;
+              break;
+            }
           }
+          if (found) break; // 当前海报匹配成功，跳出寻找外层的循环
+          container = container.parent;
+          depth++;
         }
       }
 
       if (mounted) {
         setState(() {
           if (parsedData.isEmpty) {
-            // 🌟 如果啥也没抓到，把网页标题打印出来，方便死得明明白白
-            _errorMessage = "未找到磁力链接。\n抓取到的网页标题是: [$pageTitle]";
+            // 如果还失败，抓取前 5 个 a 标签的地址打印出来用于终极诊断
+            var debugLinks = document.querySelectorAll('a').take(5).map((e) => e.attributes['href']).join('\n');
+            _errorMessage = "DOM 解析失败。\n网页标题: [$pageTitle]\n\n调试提取的链接特征:\n$debugLinks";
           } else {
             _resources = parsedData;
           }
@@ -119,6 +142,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
   void _download(String magnetUrl) async {
     HapticFeedback.mediumImpact();
     Utils.showToast("正在发送至下载节点...");
+    // qBittorrent 的 add API 原生支持丢进去 magnet 或者 http://.../.torrent 链接
     bool success = await ApiService.addTorrent(magnetUrl);
     if (success) {
       Utils.showToast("🎉 已成功添加至 qBittorrent");
@@ -153,18 +177,20 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: CupertinoColors.destructiveRed, size: 48),
-                            const SizedBox(height: 16),
-                            Text(
-                              _errorMessage,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.5)
-                            ),
-                          ],
-                        )
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: CupertinoColors.destructiveRed, size: 48),
+                              const SizedBox(height: 16),
+                              Text(
+                                _errorMessage,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)
+                              ),
+                            ],
+                          ),
+                        ),
                       )
                     )
                   : ListView.builder(
@@ -191,11 +217,11 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         children: [
           CachedNetworkImage(
             imageUrl: data['poster']!,
-            height: 220,
+            height: 240, // 稍微调高一点适应竖版海报
             fit: BoxFit.cover,
             alignment: Alignment.topCenter,
-            placeholder: (context, url) => Container(height: 220, color: Colors.white10, child: const CupertinoActivityIndicator()),
-            errorWidget: (context, url, error) => Container(height: 220, color: Colors.white10, child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
+            placeholder: (context, url) => Container(height: 240, color: Colors.white10, child: const CupertinoActivityIndicator()),
+            errorWidget: (context, url, error) => Container(height: 240, color: Colors.white10, child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
           ),
           Padding(
             padding: const EdgeInsets.all(16),
