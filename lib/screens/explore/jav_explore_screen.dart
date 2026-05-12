@@ -54,7 +54,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
 
     try {
       final dio = Dio();
-      // 🌟 终极穿透 Headers：携带 Cookie 直接绕过 JavBus 的18禁警告页
       final headers = {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
         "Accept": "text/html,application/xhtml+xml,application/xml",
@@ -128,7 +127,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           String poster = imgNode?.attributes['src'] ?? '';
           String title = imgNode?.attributes['title'] ?? '';
 
-          // 🌟 修复：补全 JavBus 的海报相对路径
           if (poster.startsWith('//')) {
             poster = 'https:$poster';
           } else if (poster.startsWith('/')) {
@@ -179,41 +177,56 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       Utils.showToast("正在后台深层嗅探磁力链...");
       try {
         final headers = {
-          "User-Agent": "Mozilla/5.0",
+          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
           "Cookie": "existmag=all; age_verified=1; over18=1",
+          "Referer": data['url']!, // 提前伪装请求来源
         };
 
         final detailResp = await Dio().get(data['url']!, options: Options(headers: headers));
 
-        final gidMatch = RegExp(r'var gid = (\d+);').firstMatch(detailResp.data);
-        final ucMatch = RegExp(r'var uc = (\d+);').firstMatch(detailResp.data);
-        final imgMatch = RegExp(r"var img = '([^']+)';").firstMatch(detailResp.data);
+        // 🌟 强化正则嗅探引擎：加入 \s* 忽略所有不可见字符（空格、换行、Tab）的干扰
+        final gidMatch = RegExp(r'var\s+gid\s*=\s*(\d+);').firstMatch(detailResp.data);
+        final ucMatch = RegExp(r'var\s+uc\s*=\s*(\d+);').firstMatch(detailResp.data);
+        final imgMatch = RegExp(r"var\s+img\s*=\s*'([^']+)';").firstMatch(detailResp.data);
 
         if (gidMatch != null) {
           final gid = gidMatch.group(1);
           final uc = ucMatch?.group(1) ?? '0';
           final img = imgMatch?.group(1) ?? '';
 
-          final ajaxUrl = 'https://www.javbus.com/ajax/uncledatoolsbyajax.php?gid=$gid&lang=zh&img=$img&uc=$uc&floor=123';
-
-          headers['Referer'] = data['url']!;
-          final ajaxResp = await Dio().get(ajaxUrl, options: Options(headers: headers));
+          // 🌟 改用 queryParameters 构建，让 Dio 自动处理 img 路径中的斜杠 URL 编码
+          final ajaxResp = await Dio().get(
+            'https://www.javbus.com/ajax/uncledatoolsbyajax.php',
+            queryParameters: {
+              'gid': gid,
+              'lang': 'zh',
+              'img': img,
+              'uc': uc,
+              'floor': DateTime.now().millisecondsSinceEpoch % 1000 + 1, // 随机生成安全的校验码
+            },
+            options: Options(headers: headers)
+          );
 
           final ajaxDoc = html_parser.parse(ajaxResp.data);
           var magnets = ajaxDoc.querySelectorAll('a[href^="magnet:?"]');
 
           if (magnets.isNotEmpty) {
+            // 抓取第一个磁力链（默认排序就是最高做种数的）
             String magnetLink = magnets.first.attributes['href']!;
             Utils.showToast("✅ 嗅探成功，开始下发...");
             bool success = await ApiService.addTorrent(magnetLink);
             if (success) Utils.showToast("🎉 已成功添加至队列！");
             else Utils.showToast("❌ 下发失败，请检查 qB 连接");
             return;
+          } else {
+            Utils.showToast("❌ 该番号当前暂无磁力分享");
+            return;
           }
         }
-        Utils.showToast("❌ 嗅探失败：该番号可能暂无磁力资源");
+        Utils.showToast("❌ 嗅探失败：未找到解析参数");
       } catch (e) {
         Utils.showToast("❌ 嗅探网络异常");
+        print("Ajax Sniff Error: $e");
       }
     }
   }
