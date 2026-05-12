@@ -12,19 +12,20 @@ dependencies:
 
   # ✅ 核心修复：升级 intl 版本以匹配你的 Flutter SDK
   intl: ^0.20.2
-  
+
   # 本地化支持
   flutter_localizations:
     sdk: flutter
-    
+    html: ^0.15.4
+
   # UI 图标
   cupertino_icons: ^1.0.2
-  
+
   # 网络与存储
   dio: ^5.3.0
   shared_preferences: ^2.2.0
   # 👉 直接在这里加上 shimmer：
-  shimmer: ^3.0.0 
+  shimmer: ^3.0.0
 
   # 功能组件
   fluttertoast: ^8.2.2
@@ -35,7 +36,7 @@ dependencies:
   file_picker: ^5.3.0
   sentry_flutter: ^8.0.0
   flutter_local_notifications: ^18.0.0
-  quick_actions: ^1.0.7 
+  quick_actions: ^1.0.7
   url_launcher: ^6.3.2
 
 dev_dependencies:
@@ -50,7 +51,7 @@ flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
   image_path: "assets/icon/icon.png"
-  min_sdk_android: 21 
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true
