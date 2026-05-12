@@ -17,6 +17,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   html: ^0.15.4
+  webview_flutter: ^4.4.2  # 🌟 手动加上这一行
 
   # UI 图标
   cupertino_icons: ^1.0.2
