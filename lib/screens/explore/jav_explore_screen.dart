@@ -1,5 +1,6 @@
-import 'dart:io'; 
-import 'package:dio/io.dart'; 
+import 'dart:io';
+import 'dart:convert'; // 🌟 新增：用于解析浏览器返回的源码
+import 'package:dio/io.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,7 +26,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
   String _errorMessage = "";
 
   static String? _busCookie;
-
   String _currentEngine = '141jav';
   String _currentCategory = '';
 
@@ -58,7 +58,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
 
   Map<String, String> get _activeCategories => _currentEngine == '141jav' ? _categories141 : _categoriesBus;
 
-  // 🌟 修复：利用 Dart 类型推导，解决 dart:io 和 webview_flutter 之间的 X509Certificate 命名冲突
   Dio _getBypassDio() {
     final dio = Dio();
     dio.httpClientAdapter = IOHttpClientAdapter(
@@ -69,6 +68,18 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       },
     );
     return dio;
+  }
+
+  String _translateNetworkError(dynamic error) {
+    String errStr = error.toString();
+    if (errStr.contains('HandshakeException')) {
+      return "TLS 握手被网络服务商强制阻断。\n请检查代理软件是否开启了【全局路由】模式，或尝试更换 VPN 节点后下拉刷新。";
+    } else if (errStr.contains('SocketException')) {
+      return "网络连接失败，找不到服务器。\n请检查您的网络设置或全局代理状态。";
+    } else if (errStr.contains('TimeoutException')) {
+      return "请求超时，节点响应过慢。\n请更换一个速度更快的网络节点。";
+    }
+    return "连接异常: $errStr";
   }
 
   Future<void> _fetchAndParse() async {
@@ -92,8 +103,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       if (_currentEngine == '141jav') {
         final response = await dio.get('https://www.141jav.com/$_currentCategory', options: Options(headers: headers, validateStatus: (s) => true));
         _parse141(response.data, parsedData);
-      }
-      else {
+      } else {
         bool intercepted = false;
         for (String mirror in _busMirrors) {
           currentMirror = mirror;
@@ -109,12 +119,12 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
 
           var boxes = doc.querySelectorAll('.movie-box');
           if (boxes.isNotEmpty) {
-            _parseBus(boxes, parsedData, mirror);
+            _parseBusHtml(response.data, parsedData, mirror);
             break;
           }
         }
         if (intercepted) {
-          _showVerificationGateway(currentMirror!);
+          _showWebKitTask(currentMirror!, isList: true);
           return;
         }
       }
@@ -130,7 +140,12 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _errorMessage = "连接异常: $e"; _isLoading = false; });
+      // 🌟 如果被 Cloudflare 握手阻断，自动呼叫 WebKit 战车接管！
+      if (e.toString().contains('HandshakeException') && _currentEngine == 'javbus') {
+        _showWebKitTask('${_busMirrors.last}/$_currentCategory', isList: true);
+      } else {
+        if (mounted) setState(() { _errorMessage = _translateNetworkError(e); _isLoading = false; });
+      }
     }
   }
 
@@ -164,7 +179,9 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     }
   }
 
-  void _parseBus(dynamic boxes, List<Map<String, String>> data, String mirror) {
+  void _parseBusHtml(String html, List<Map<String, String>> data, String mirror) {
+    var document = html_parser.parse(html);
+    var boxes = document.querySelectorAll('.movie-box');
     for (var box in boxes) {
       String detailUrl = box.attributes['href'] ?? '';
       var imgNode = box.querySelector('img');
@@ -181,24 +198,80 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     }
   }
 
-  void _showVerificationGateway(String url) {
+  // 🌟 终极万能 WebKit 自动化任务处理器
+  void _showWebKitTask(String url, {required bool isList}) {
     final WebViewController controller = WebViewController();
+    bool taskCompleted = false;
 
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15")
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageFinished: (String url) async {
+          onPageFinished: (String loadedUrl) async {
+            if (taskCompleted) return;
+
+            // 存 Cookie
             final cookie = await controller.runJavaScriptReturningResult('document.cookie') as String;
             if (cookie.contains('PHPSESSID')) {
               _busCookie = cookie.replaceAll('"', '');
             }
-            final title = await controller.getTitle();
-            if (title != null && !title.contains('Verification') && !title.contains('检测')) {
-              Utils.showToast("🔓 验证通过，正在同步数据...");
+
+            final title = await controller.getTitle() ?? '';
+            // 如果遇到科目一考试，停下让用户自己点
+            if (title.contains('Verification') || title.contains('检测')) return;
+
+            // 成功通过验证或直连成功！
+            if (isList) {
+              Utils.showToast("🔓 原生通道建立，正在解析...");
+              final rawHtml = await controller.runJavaScriptReturningResult("document.documentElement.outerHTML");
+              String html = "";
+              if (rawHtml is String) {
+                try { html = jsonDecode(rawHtml) as String; } catch (_) { html = rawHtml; }
+              }
+
+              List<Map<String, String>> parsedData = [];
+              final uri = Uri.parse(url);
+              _parseBusHtml(html, parsedData, '${uri.scheme}://${uri.host}');
+
+              if (mounted) {
+                setState(() { _resources = parsedData; _isLoading = false; });
+              }
+              taskCompleted = true;
               Navigator.pop(context);
-              _fetchAndParse();
+            } else {
+              Utils.showToast("正在深度嗅探...");
+              // 注入 JS，等待详情页动态渲染完磁力链，然后一击必杀
+              final jsCode = '''
+                new Promise((resolve) => {
+                  let attempts = 0;
+                  let interval = setInterval(() => {
+                    let mag = document.querySelector('a[href^="magnet:?"]');
+                    if (mag) {
+                      clearInterval(interval);
+                      resolve(mag.href);
+                    }
+                    attempts++;
+                    if (attempts > 15) {
+                      clearInterval(interval);
+                      resolve('FAILED');
+                    }
+                  }, 400);
+                });
+              ''';
+              final result = await controller.runJavaScriptReturningResult(jsCode);
+              String magnet = "";
+              if (result is String) magnet = result.replaceAll('"', '');
+
+              if (magnet.startsWith('magnet:?')) {
+                bool success = await ApiService.addTorrent(magnet);
+                if (success) Utils.showToast("🎉 嗅探成功，已下发！");
+                else Utils.showToast("❌ 下发失败，请检查 qB 连接");
+              } else {
+                Utils.showToast("❌ 该番号当前暂无磁力分享");
+              }
+              taskCompleted = true;
+              Navigator.pop(context);
             }
           },
         ),
@@ -218,14 +291,16 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text("安全验证", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.black, decoration: TextDecoration.none)),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    child: const Text("取消"),
-                    onPressed: () => Navigator.pop(context),
-                  )
+                  Text(isList ? "正在突破防火墙拉取列表" : "正在等待加密资源渲染...", 
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black, decoration: TextDecoration.none)),
+                  CupertinoButton(padding: EdgeInsets.zero, child: const Text("取消"), onPressed: () => Navigator.pop(context))
                 ],
               ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Text("由于触发高级防御，已启动原生内核进行截获。如果出现验证码，请手动完成即可自动退出。", 
+                style: TextStyle(fontSize: 12, color: Colors.grey, decoration: TextDecoration.none)),
             ),
             Expanded(child: WebViewWidget(controller: controller)),
           ],
@@ -243,7 +318,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       if (success) Utils.showToast("🎉 已成功下发任务！");
       else Utils.showToast("❌ 下发失败，请检查 qB 连接");
     } else {
-      Utils.showToast("正在后台深度嗅探磁力链...");
+      Utils.showToast("启动网络请求...");
       try {
         final dio = _getBypassDio();
         final headers = {
@@ -253,7 +328,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         };
         final detailResp = await dio.get(data['url']!, options: Options(headers: headers));
         final gidMatch = RegExp(r'var\s+gid\s*=\s*(\d+);').firstMatch(detailResp.data);
-        
+
         if (gidMatch != null) {
           final uri = Uri.parse(data['url']!);
           final ajaxResp = await dio.get(
@@ -271,7 +346,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           var magnets = ajaxDoc.querySelectorAll('a[href^="magnet:?"]');
           if (magnets.isNotEmpty) {
             bool success = await ApiService.addTorrent(magnets.first.attributes['href']!);
-            if (success) Utils.showToast("🎉 嗅探成功，已下发");
+            if (success) Utils.showToast("🎉 极速嗅探成功，已下发！");
             else Utils.showToast("❌ 下发失败，请检查 qB 连接");
             return;
           } else {
@@ -279,9 +354,15 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
             return;
           }
         }
-        Utils.showToast("❌ 嗅探失败：未找到解析参数");
+        Utils.showToast("❌ 解析失败，尝试强制执行...");
+        _showWebKitTask(data['url']!, isList: false);
       } catch (e) {
-        Utils.showToast("❌ 异常: $e");
+        // 🌟 如果被 Cloudflare 握手阻断，同样呼叫 WebKit 战车接管！
+        if (e.toString().contains('HandshakeException')) {
+          _showWebKitTask(data['url']!, isList: false);
+        } else {
+          Utils.showToast(_translateNetworkError(e).replaceAll('\n', ' '));
+        }
       }
     }
   }
