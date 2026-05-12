@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:convert'; // 🌟 新增：用于解析浏览器返回的源码
+import 'dart:convert';
 import 'package:dio/io.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -70,18 +70,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     return dio;
   }
 
-  String _translateNetworkError(dynamic error) {
-    String errStr = error.toString();
-    if (errStr.contains('HandshakeException')) {
-      return "TLS 握手被网络服务商强制阻断。\n请检查代理软件是否开启了【全局路由】模式，或尝试更换 VPN 节点后下拉刷新。";
-    } else if (errStr.contains('SocketException')) {
-      return "网络连接失败，找不到服务器。\n请检查您的网络设置或全局代理状态。";
-    } else if (errStr.contains('TimeoutException')) {
-      return "请求超时，节点响应过慢。\n请更换一个速度更快的网络节点。";
-    }
-    return "连接异常: $errStr";
-  }
-
   Future<void> _fetchAndParse() async {
     setState(() {
       _isLoading = true;
@@ -109,6 +97,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           currentMirror = mirror;
           final targetUrl = '$mirror/$_currentCategory';
           final response = await dio.get(targetUrl, options: Options(headers: headers, validateStatus: (s) => true));
+          
           var doc = html_parser.parse(response.data);
           String title = doc.querySelector('title')?.text.trim() ?? '';
 
@@ -140,11 +129,10 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         });
       }
     } catch (e) {
-      // 🌟 如果被 Cloudflare 握手阻断，自动呼叫 WebKit 战车接管！
-      if (e.toString().contains('HandshakeException') && _currentEngine == 'javbus') {
+      if (_currentEngine == 'javbus') {
         _showWebKitTask('${_busMirrors.last}/$_currentCategory', isList: true);
       } else {
-        if (mounted) setState(() { _errorMessage = _translateNetworkError(e); _isLoading = false; });
+        if (mounted) setState(() { _errorMessage = "连接异常: $e"; _isLoading = false; });
       }
     }
   }
@@ -198,7 +186,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     }
   }
 
-  // 🌟 终极万能 WebKit 自动化任务处理器
   void _showWebKitTask(String url, {required bool isList}) {
     final WebViewController controller = WebViewController();
     bool taskCompleted = false;
@@ -211,19 +198,16 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           onPageFinished: (String loadedUrl) async {
             if (taskCompleted) return;
 
-            // 存 Cookie
             final cookie = await controller.runJavaScriptReturningResult('document.cookie') as String;
             if (cookie.contains('PHPSESSID')) {
               _busCookie = cookie.replaceAll('"', '');
             }
 
             final title = await controller.getTitle() ?? '';
-            // 如果遇到科目一考试，停下让用户自己点
             if (title.contains('Verification') || title.contains('检测')) return;
 
-            // 成功通过验证或直连成功！
             if (isList) {
-              Utils.showToast("🔓 原生通道建立，正在解析...");
+              Utils.showToast("🔓 验证通过，正在解析列表...");
               final rawHtml = await controller.runJavaScriptReturningResult("document.documentElement.outerHTML");
               String html = "";
               if (rawHtml is String) {
@@ -240,35 +224,34 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
               taskCompleted = true;
               Navigator.pop(context);
             } else {
-              Utils.showToast("正在深度嗅探...");
-              // 注入 JS，等待详情页动态渲染完磁力链，然后一击必杀
+              Utils.showToast("正利用原生 JS 引擎提取直链...");
+              // 🌟 终极直链提取法：直接在拥有合法权限的 WebView 内发动 Fetch 请求！
               final jsCode = '''
-                new Promise((resolve) => {
-                  let attempts = 0;
-                  let interval = setInterval(() => {
-                    let mag = document.querySelector('a[href^="magnet:?"]');
-                    if (mag) {
-                      clearInterval(interval);
-                      resolve(mag.href);
-                    }
-                    attempts++;
-                    if (attempts > 15) {
-                      clearInterval(interval);
-                      resolve('FAILED');
-                    }
-                  }, 400);
+                new Promise((resolve, reject) => {
+                  if (typeof gid === 'undefined') {
+                    resolve('NO_GID');
+                    return;
+                  }
+                  const fetchUrl = `/ajax/uncledatoolsbyajax.php?gid=\${gid}&lang=zh&img=\${img}&uc=\${uc}&floor=\${Math.floor(Math.random() * 1000 + 1)}`;
+                  fetch(fetchUrl)
+                    .then(r => r.text())
+                    .then(html => {
+                       const doc = new DOMParser().parseFromString(html, 'text/html');
+                       const mag = doc.querySelector('a[href^="magnet:?"]');
+                       resolve(mag ? mag.href : 'NO_MAGNET');
+                    })
+                    .catch(e => resolve('FETCH_ERR'));
                 });
               ''';
               final result = await controller.runJavaScriptReturningResult(jsCode);
-              String magnet = "";
-              if (result is String) magnet = result.replaceAll('"', '');
+              String magnet = result.toString().replaceAll('"', '');
 
               if (magnet.startsWith('magnet:?')) {
                 bool success = await ApiService.addTorrent(magnet);
-                if (success) Utils.showToast("🎉 嗅探成功，已下发！");
+                if (success) Utils.showToast("🎉 极速嗅探成功，已下发！");
                 else Utils.showToast("❌ 下发失败，请检查 qB 连接");
               } else {
-                Utils.showToast("❌ 该番号当前暂无磁力分享");
+                Utils.showToast("❌ 提取失败，该番号可能暂无资源");
               }
               taskCompleted = true;
               Navigator.pop(context);
@@ -291,7 +274,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(isList ? "正在突破防火墙拉取列表" : "正在等待加密资源渲染...", 
+                  Text(isList ? "正在突破防火墙拉取列表" : "正在提取加密资源...", 
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black, decoration: TextDecoration.none)),
                   CupertinoButton(padding: EdgeInsets.zero, child: const Text("取消"), onPressed: () => Navigator.pop(context))
                 ],
@@ -299,7 +282,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
             ),
             const Padding(
               padding: EdgeInsets.all(8),
-              child: Text("由于触发高级防御，已启动原生内核进行截获。如果出现验证码，请手动完成即可自动退出。", 
+              child: Text("由于触发高级防御，已启动原生内核进行截获。如果出现验证码，请手动完成即可。", 
                 style: TextStyle(fontSize: 12, color: Colors.grey, decoration: TextDecoration.none)),
             ),
             Expanded(child: WebViewWidget(controller: controller)),
@@ -318,7 +301,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       if (success) Utils.showToast("🎉 已成功下发任务！");
       else Utils.showToast("❌ 下发失败，请检查 qB 连接");
     } else {
-      Utils.showToast("启动网络请求...");
+      Utils.showToast("启动轻量级请求...");
       try {
         final dio = _getBypassDio();
         final headers = {
@@ -327,6 +310,12 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           "Referer": data['url']!,
         };
         final detailResp = await dio.get(data['url']!, options: Options(headers: headers));
+        
+        // 发现被防爬拦截，直接走强制降级路线
+        if (detailResp.data.toString().contains('Verification') || detailResp.data.toString().contains('Just a moment')) {
+           throw "Intercepted";
+        }
+
         final gidMatch = RegExp(r'var\s+gid\s*=\s*(\d+);').firstMatch(detailResp.data);
 
         if (gidMatch != null) {
@@ -346,23 +335,15 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           var magnets = ajaxDoc.querySelectorAll('a[href^="magnet:?"]');
           if (magnets.isNotEmpty) {
             bool success = await ApiService.addTorrent(magnets.first.attributes['href']!);
-            if (success) Utils.showToast("🎉 极速嗅探成功，已下发！");
+            if (success) Utils.showToast("🎉 轻量嗅探成功，已下发！");
             else Utils.showToast("❌ 下发失败，请检查 qB 连接");
-            return;
-          } else {
-            Utils.showToast("❌ 该番号当前暂无磁力分享");
             return;
           }
         }
-        Utils.showToast("❌ 解析失败，尝试强制执行...");
-        _showWebKitTask(data['url']!, isList: false);
+        // 解析不到 GID 或 列表为空，启动强制降级！
+        throw "Failed to extract via lightweight request";
       } catch (e) {
-        // 🌟 如果被 Cloudflare 握手阻断，同样呼叫 WebKit 战车接管！
-        if (e.toString().contains('HandshakeException')) {
-          _showWebKitTask(data['url']!, isList: false);
-        } else {
-          Utils.showToast(_translateNetworkError(e).replaceAll('\n', ' '));
-        }
+        _showWebKitTask(data['url']!, isList: false);
       }
     }
   }
@@ -492,6 +473,11 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
             height: isBus ? 200 : 240,
             fit: isBus ? BoxFit.contain : BoxFit.cover,
             alignment: isBus ? Alignment.center : Alignment.topCenter,
+            // 🌟 修复图片 403 错误：加入防盗链伪装头
+            httpHeaders: const {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Referer": "https://www.javbus.com/"
+            },
             placeholder: (context, url) => Container(height: 200, color: Colors.white10, child: const CupertinoActivityIndicator()),
             errorWidget: (context, url, error) => Container(height: 200, color: Colors.white10, child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
           ),
