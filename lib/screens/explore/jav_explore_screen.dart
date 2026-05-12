@@ -164,17 +164,22 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       String poster = imgNode?.attributes['src'] ?? '';
       String title = imgNode?.attributes['title'] ?? '';
       if (poster.startsWith('//')) poster = 'https:$poster';
-      else if (poster.startsWith('/')) poster = 'https://www.javbus.com$poster';
+      else if (poster.startsWith('/')) poster = '$mirror$poster';
       var dateSpans = box.querySelectorAll('date');
       String code = dateSpans.isNotEmpty ? dateSpans.first.text : '';
+      if (title.isEmpty) title = code;
       if (detailUrl.isNotEmpty && poster.isNotEmpty) {
-        data.add({'title': title, 'poster': poster, 'url': detailUrl, 'engine': 'javbus', 'code': code});
+        data.add({'title': "[$code] $title", 'poster': poster, 'url': detailUrl, 'engine': 'javbus', 'code': code});
       }
     }
   }
 
   void _showVerificationGateway(String url) {
-    final WebViewController controller = WebViewController()
+    // 🌟 修复：先单独声明并初始化控制器
+    final WebViewController controller = WebViewController();
+
+    // 🌟 修复：然后再配置属性，完美避开闭包作用域陷阱
+    controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15")
       ..setNavigationDelegate(
@@ -186,7 +191,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
             }
             final title = await controller.getTitle();
             if (title != null && !title.contains('Verification') && !title.contains('检测')) {
-              Utils.showToast("🔓 验证通过");
+              Utils.showToast("🔓 验证通过，正在同步数据...");
               Navigator.pop(context);
               _fetchAndParse();
             }
@@ -228,11 +233,12 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     HapticFeedback.mediumImpact();
 
     if (data['engine'] == '141jav') {
-      Utils.showToast("正在下发任务...");
+      Utils.showToast("正在发送至下载节点...");
       bool success = await ApiService.addTorrent(data['url']!);
-      if (success) Utils.showToast("🎉 下载任务已添加");
+      if (success) Utils.showToast("🎉 已成功下发任务！");
+      else Utils.showToast("❌ 下发失败，请检查 qB 连接");
     } else {
-      Utils.showToast("正在深度嗅探...");
+      Utils.showToast("正在后台深度嗅探磁力链...");
       try {
         final headers = {
           "User-Agent": "Mozilla/5.0",
@@ -241,6 +247,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         };
         final detailResp = await Dio().get(data['url']!, options: Options(headers: headers));
         final gidMatch = RegExp(r'var\s+gid\s*=\s*(\d+);').firstMatch(detailResp.data);
+        
         if (gidMatch != null) {
           final uri = Uri.parse(data['url']!);
           final ajaxResp = await Dio().get(
@@ -259,10 +266,14 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           if (magnets.isNotEmpty) {
             bool success = await ApiService.addTorrent(magnets.first.attributes['href']!);
             if (success) Utils.showToast("🎉 嗅探成功，已下发");
+            else Utils.showToast("❌ 下发失败，请检查 qB 连接");
+            return;
+          } else {
+            Utils.showToast("❌ 该番号当前暂无磁力分享");
             return;
           }
         }
-        Utils.showToast("❌ 嗅探失败");
+        Utils.showToast("❌ 嗅探失败：未找到解析参数");
       } catch (e) {
         Utils.showToast("❌ 异常: $e");
       }
@@ -282,6 +293,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           navigationBar: CupertinoNavigationBar(
             middle: const Text("深网探索", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2)),
             backgroundColor: bgColor.withOpacity(0.8),
+            previousPageTitle: "返回",
             trailing: CupertinoButton(
               padding: EdgeInsets.zero,
               child: const Icon(CupertinoIcons.refresh, color: Colors.white),
@@ -297,7 +309,23 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                   child: _isLoading
                     ? const Center(child: CupertinoActivityIndicator(color: Colors.white))
                     : _errorMessage.isNotEmpty
-                        ? Center(child: Text(_errorMessage, style: const TextStyle(color: Colors.white54)))
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: CupertinoColors.destructiveRed, size: 48),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _errorMessage,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)
+                                  ),
+                                ],
+                              ),
+                            )
+                          )
                         : ListView.builder(
                             padding: const EdgeInsets.only(bottom: 40),
                             itemCount: _resources.length,
@@ -376,8 +404,9 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
             imageUrl: data['poster']!,
             height: isBus ? 200 : 240,
             fit: isBus ? BoxFit.contain : BoxFit.cover,
-            placeholder: (context, url) => Container(height: 200, color: Colors.white10),
-            errorWidget: (context, url, error) => const Icon(CupertinoIcons.photo, color: Colors.grey),
+            alignment: isBus ? Alignment.center : Alignment.topCenter,
+            placeholder: (context, url) => Container(height: 200, color: Colors.white10, child: const CupertinoActivityIndicator()),
+            errorWidget: (context, url, error) => Container(height: 200, color: Colors.white10, child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
           ),
           Padding(
             padding: const EdgeInsets.all(16),
@@ -388,11 +417,11 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                 ),
                 const SizedBox(width: 12),
                 CupertinoButton(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   color: isBus ? CupertinoColors.activeBlue : CupertinoColors.activeOrange,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   borderRadius: BorderRadius.circular(20),
                   onPressed: () => _download(data),
-                  child: Text(isBus ? "嗅探" : "下载", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                  child: Text(isBus ? "嗅探下载" : "直链下载", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
                 ),
               ],
             ),
