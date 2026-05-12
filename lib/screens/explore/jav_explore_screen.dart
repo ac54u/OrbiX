@@ -21,11 +21,9 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
   List<Map<String, String>> _resources = [];
   String _errorMessage = "";
 
-  // 🌟 双引擎状态管理
-  String _currentEngine = '141jav'; // '141jav' 或 'javbus'
+  String _currentEngine = '141jav';
   String _currentCategory = '';
 
-  // 🌟 141JAV 的分类
   final Map<String, String> _categories141 = {
     '': '首页',
     'new': '最新',
@@ -33,7 +31,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     'random/': '随机',
   };
 
-  // 🌟 JavBus 的分类
   final Map<String, String> _categoriesBus = {
     '': '有码',
     'uncensored': '无码',
@@ -46,7 +43,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     _fetchAndParse();
   }
 
-  // 获取当前生效的分类字典
   Map<String, String> get _activeCategories => _currentEngine == '141jav' ? _categories141 : _categoriesBus;
 
   Future<void> _fetchAndParse() async {
@@ -58,9 +54,11 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
 
     try {
       final dio = Dio();
+      // 🌟 终极穿透 Headers：携带 Cookie 直接绕过 JavBus 的18禁警告页
       final headers = {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
         "Accept": "text/html,application/xhtml+xml,application/xml",
+        "Cookie": "existmag=all; age_verified=1; over18=1",
       };
 
       List<Map<String, String>> parsedData = [];
@@ -77,7 +75,8 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         pageTitle = document.querySelector('title')?.text.trim() ?? '无标题';
         if (pageTitle.toLowerCase().contains('cloudflare')) throw "141JAV 遭遇 5秒盾拦截。";
 
-        var allImages = document.querySelectorAll('img');
+        var allImages = document.querySelectorAll('.image, .thumbnail img');
+
         for (var img in allImages) {
           String poster = img.attributes['src'] ?? '';
           if (poster.isEmpty || poster.contains('avatar') || poster.contains('logo') || poster.contains('icon')) continue;
@@ -118,6 +117,10 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         var document = html_parser.parse(response.data);
         pageTitle = document.querySelector('title')?.text.trim() ?? '无标题';
 
+        if (pageTitle.toLowerCase().contains('age verification')) {
+           throw "JavBus 网页 Cookie 穿透失败，仍被年龄验证拦截。";
+        }
+
         var allBoxes = document.querySelectorAll('.movie-box');
         for (var box in allBoxes) {
           String detailUrl = box.attributes['href'] ?? '';
@@ -125,9 +128,13 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           String poster = imgNode?.attributes['src'] ?? '';
           String title = imgNode?.attributes['title'] ?? '';
 
-          if (poster.startsWith('//')) poster = 'https:$poster';
+          // 🌟 修复：补全 JavBus 的海报相对路径
+          if (poster.startsWith('//')) {
+            poster = 'https:$poster';
+          } else if (poster.startsWith('/')) {
+            poster = 'https://www.javbus.com$poster';
+          }
 
-          // 提取番号
           var dateSpans = box.querySelectorAll('date');
           String code = dateSpans.isNotEmpty ? dateSpans.first.text : '';
           if (title.isEmpty) title = code;
@@ -137,7 +144,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                 parsedData.add({
                   'title': "[$code] $title",
                   'poster': poster,
-                  'url': detailUrl, // 注意：JavBus 存的是详情页 URL，需要点击下载时二次嗅探
+                  'url': detailUrl,
                   'engine': 'javbus'
                 });
              }
@@ -156,30 +163,28 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _errorMessage = "抓取失败: $e"; _isLoading = false; });
+      if (mounted) setState(() { _errorMessage = "抓取异常: $e"; _isLoading = false; });
     }
   }
 
-  // 🌟 核心：下载分流处理
   void _download(Map<String, String> data) async {
     HapticFeedback.mediumImpact();
 
     if (data['engine'] == '141jav') {
-      // 141JAV 直接下发 .torrent 链接
       Utils.showToast("正在发送至下载节点...");
       bool success = await ApiService.addTorrent(data['url']!);
       if (success) Utils.showToast("🎉 已成功下发任务！");
       else Utils.showToast("❌ 下发失败，请检查 qB 连接");
     } else {
-      // 🌟 JavBus 动态 Ajax 嗅探逻辑
       Utils.showToast("正在后台深层嗅探磁力链...");
       try {
-        final detailResp = await Dio().get(
-          data['url']!,
-          options: Options(headers: {"User-Agent": "Mozilla/5.0"}),
-        );
+        final headers = {
+          "User-Agent": "Mozilla/5.0",
+          "Cookie": "existmag=all; age_verified=1; over18=1",
+        };
 
-        // 从 HTML 中提取 Ajax 必须的参数
+        final detailResp = await Dio().get(data['url']!, options: Options(headers: headers));
+
         final gidMatch = RegExp(r'var gid = (\d+);').firstMatch(detailResp.data);
         final ucMatch = RegExp(r'var uc = (\d+);').firstMatch(detailResp.data);
         final imgMatch = RegExp(r"var img = '([^']+)';").firstMatch(detailResp.data);
@@ -190,16 +195,14 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           final img = imgMatch?.group(1) ?? '';
 
           final ajaxUrl = 'https://www.javbus.com/ajax/uncledatoolsbyajax.php?gid=$gid&lang=zh&img=$img&uc=$uc&floor=123';
-          final ajaxResp = await Dio().get(
-            ajaxUrl,
-            options: Options(headers: {'Referer': data['url']!})
-          );
+
+          headers['Referer'] = data['url']!;
+          final ajaxResp = await Dio().get(ajaxUrl, options: Options(headers: headers));
 
           final ajaxDoc = html_parser.parse(ajaxResp.data);
           var magnets = ajaxDoc.querySelectorAll('a[href^="magnet:?"]');
 
           if (magnets.isNotEmpty) {
-            // 取第一个磁力链（通常是做种数最多的）
             String magnetLink = magnets.first.attributes['href']!;
             Utils.showToast("✅ 嗅探成功，开始下发...");
             bool success = await ApiService.addTorrent(magnetLink);
@@ -210,7 +213,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         }
         Utils.showToast("❌ 嗅探失败：该番号可能暂无磁力资源");
       } catch (e) {
-        Utils.showToast("❌ 嗅探网络异常: $e");
+        Utils.showToast("❌ 嗅探网络异常");
       }
     }
   }
@@ -238,7 +241,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           child: SafeArea(
             child: Column(
               children: [
-                // 🌟 第 1 层：引擎选择器 (141JAV vs JavBus)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: SizedBox(
@@ -256,7 +258,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                           HapticFeedback.selectionClick();
                           setState(() {
                             _currentEngine = v;
-                            _currentCategory = ''; // 切换引擎重置分类
+                            _currentCategory = '';
                           });
                           _fetchAndParse();
                         }
@@ -265,7 +267,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                   ),
                 ),
 
-                // 🌟 第 2 层：内容分类切换器
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: SizedBox(
@@ -292,7 +293,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                   ),
                 ),
 
-                // 列表内容区域
                 Expanded(
                   child: _isLoading
                     ? const Center(child: CupertinoActivityIndicator(color: Colors.white))
@@ -329,7 +329,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
   }
 
   Widget _buildResourceCard(Map<String, String> data, Color cardColor) {
-    // 动态调整海报显示策略：141jav多为竖版，JavBus多为横版(DVD封面)
     final isBus = data['engine'] == 'javbus';
 
     return Container(
@@ -345,8 +344,8 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         children: [
           CachedNetworkImage(
             imageUrl: data['poster']!,
-            height: isBus ? 200 : 240, // 横版封面稍微矮一点
-            fit: isBus ? BoxFit.contain : BoxFit.cover, // Javbus尽量展示全貌
+            height: isBus ? 200 : 240,
+            fit: isBus ? BoxFit.contain : BoxFit.cover,
             alignment: isBus ? Alignment.center : Alignment.topCenter,
             placeholder: (context, url) => Container(height: 200, color: Colors.white10, child: const CupertinoActivityIndicator()),
             errorWidget: (context, url, error) => Container(height: 200, color: Colors.white10, child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
@@ -366,7 +365,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                 const SizedBox(width: 12),
                 CupertinoButton(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: isBus ? CupertinoColors.activeBlue : CupertinoColors.activeOrange, // 区分不同引擎的按钮颜色
+                  color: isBus ? CupertinoColors.activeBlue : CupertinoColors.activeOrange,
                   borderRadius: BorderRadius.circular(20),
                   minSize: 32,
                   onPressed: () => _download(data),
