@@ -31,10 +31,12 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     'random/': '随机',
   };
 
+  // 🌟 扩充 JavBus 的黄金垂直分类
   final Map<String, String> _categoriesBus = {
     '': '有码',
     'uncensored': '无码',
-    'genre/sub': '中字字幕',
+    'genre/hd': '高清',
+    'genre/sub': '中字',
   };
 
   @override
@@ -179,12 +181,11 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         final headers = {
           "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
           "Cookie": "existmag=all; age_verified=1; over18=1",
-          "Referer": data['url']!, // 提前伪装请求来源
+          "Referer": data['url']!,
         };
 
         final detailResp = await Dio().get(data['url']!, options: Options(headers: headers));
 
-        // 🌟 强化正则嗅探引擎：加入 \s* 忽略所有不可见字符（空格、换行、Tab）的干扰
         final gidMatch = RegExp(r'var\s+gid\s*=\s*(\d+);').firstMatch(detailResp.data);
         final ucMatch = RegExp(r'var\s+uc\s*=\s*(\d+);').firstMatch(detailResp.data);
         final imgMatch = RegExp(r"var\s+img\s*=\s*'([^']+)';").firstMatch(detailResp.data);
@@ -194,7 +195,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           final uc = ucMatch?.group(1) ?? '0';
           final img = imgMatch?.group(1) ?? '';
 
-          // 🌟 改用 queryParameters 构建，让 Dio 自动处理 img 路径中的斜杠 URL 编码
           final ajaxResp = await Dio().get(
             'https://www.javbus.com/ajax/uncledatoolsbyajax.php',
             queryParameters: {
@@ -202,7 +202,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
               'lang': 'zh',
               'img': img,
               'uc': uc,
-              'floor': DateTime.now().millisecondsSinceEpoch % 1000 + 1, // 随机生成安全的校验码
+              'floor': DateTime.now().millisecondsSinceEpoch % 1000 + 1,
             },
             options: Options(headers: headers)
           );
@@ -211,7 +211,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           var magnets = ajaxDoc.querySelectorAll('a[href^="magnet:?"]');
 
           if (magnets.isNotEmpty) {
-            // 抓取第一个磁力链（默认排序就是最高做种数的）
             String magnetLink = magnets.first.attributes['href']!;
             Utils.showToast("✅ 嗅探成功，开始下发...");
             bool success = await ApiService.addTorrent(magnetLink);
