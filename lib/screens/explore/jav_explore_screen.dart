@@ -31,13 +31,20 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     'random/': '随机',
   };
 
-  // 🌟 扩充 JavBus 的黄金垂直分类
   final Map<String, String> _categoriesBus = {
     '': '有码',
     'uncensored': '无码',
     'genre/hd': '高清',
     'genre/sub': '中字',
   };
+
+  // 🌟 新增：JavBus 官方镜像矩阵，用于绕过极高防御的主站
+  final List<String> _busMirrors = [
+    'https://www.javsee.in',
+    'https://www.busjav.cc',
+    'https://www.seedmm.in',
+    'https://www.javbus.com',
+  ];
 
   @override
   void initState() {
@@ -66,7 +73,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       String pageTitle = "";
 
       // ==========================================
-      // 引擎 1：141JAV 解析逻辑
+      // 引擎 1：141JAV 解析逻辑 (保持不变)
       // ==========================================
       if (_currentEngine == '141jav') {
         final response = await dio.get('https://www.141jav.com/$_currentCategory', options: Options(headers: headers, validateStatus: (s) => true));
@@ -74,7 +81,9 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
 
         var document = html_parser.parse(response.data);
         pageTitle = document.querySelector('title')?.text.trim() ?? '无标题';
-        if (pageTitle.toLowerCase().contains('cloudflare')) throw "141JAV 遭遇 5秒盾拦截。";
+        if (pageTitle.toLowerCase().contains('cloudflare') || pageTitle.toLowerCase().contains('just a moment')) {
+          throw "141JAV 遭遇防爬虫盾拦截。";
+        }
 
         var allImages = document.querySelectorAll('.image, .thumbnail img');
 
@@ -109,53 +118,81 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         }
       }
       // ==========================================
-      // 引擎 2：JavBus 解析逻辑
+      // 引擎 2：JavBus 自动降级突破逻辑
       // ==========================================
       else {
-        final response = await dio.get('https://www.javbus.com/$_currentCategory', options: Options(headers: headers, validateStatus: (s) => true));
-        if (response.statusCode != 200) throw "JavBus 访问受限 (HTTP ${response.statusCode})";
+        bool isSuccess = false;
 
-        var document = html_parser.parse(response.data);
-        pageTitle = document.querySelector('title')?.text.trim() ?? '无标题';
+        // 🌟 遍历镜像矩阵，哪个没挂验证码就用哪个！
+        for (String mirror in _busMirrors) {
+          try {
+            final targetUrl = '$mirror/$_currentCategory';
+            final response = await dio.get(targetUrl, options: Options(headers: headers, validateStatus: (s) => true));
+            if (response.statusCode != 200) continue;
 
-        if (pageTitle.toLowerCase().contains('age verification')) {
-           throw "JavBus 网页 Cookie 穿透失败，仍被年龄验证拦截。";
+            var document = html_parser.parse(response.data);
+            pageTitle = document.querySelector('title')?.text.trim() ?? '无标题';
+
+            // 侦测是否遭遇了验证码或年龄拦截，如果是，直接放弃该节点，测试下一个
+            if (pageTitle.toLowerCase().contains('age verification') ||
+                pageTitle.toLowerCase().contains('cloudflare') ||
+                pageTitle.toLowerCase().contains('just a moment') ||
+                pageTitle.toLowerCase().contains('attention required')) {
+               print("节点 $mirror 遭遇验证码拦截，正在切换下一个...");
+               continue;
+            }
+
+            var allBoxes = document.querySelectorAll('.movie-box');
+            if (allBoxes.isEmpty) continue; // 如果没抓到数据，也换下一个节点
+
+            for (var box in allBoxes) {
+              String detailUrl = box.attributes['href'] ?? '';
+              var imgNode = box.querySelector('img');
+              String poster = imgNode?.attributes['src'] ?? '';
+              String title = imgNode?.attributes['title'] ?? '';
+
+              if (poster.startsWith('//')) {
+                poster = 'https:$poster';
+              } else if (poster.startsWith('/')) {
+                poster = '$mirror$poster'; // 动态使用突破成功的域名拼接图片
+              }
+
+              var dateSpans = box.querySelectorAll('date');
+              String code = dateSpans.isNotEmpty ? dateSpans.first.text : '';
+              if (title.isEmpty) title = code;
+
+              if (detailUrl.isNotEmpty && poster.isNotEmpty) {
+                 if (!parsedData.any((e) => e['url'] == detailUrl)) {
+                    parsedData.add({
+                      'title': "[$code] $title",
+                      'poster': poster,
+                      'url': detailUrl,
+                      'engine': 'javbus'
+                    });
+                 }
+              }
+            }
+
+            // 只要有一个节点突围成功，立刻中止遍历！
+            isSuccess = true;
+            print("🚀 成功突破节点: $mirror");
+            break;
+
+          } catch (e) {
+            print("节点 $mirror 发生异常: $e");
+            continue;
+          }
         }
 
-        var allBoxes = document.querySelectorAll('.movie-box');
-        for (var box in allBoxes) {
-          String detailUrl = box.attributes['href'] ?? '';
-          var imgNode = box.querySelector('img');
-          String poster = imgNode?.attributes['src'] ?? '';
-          String title = imgNode?.attributes['title'] ?? '';
-
-          if (poster.startsWith('//')) {
-            poster = 'https:$poster';
-          } else if (poster.startsWith('/')) {
-            poster = 'https://www.javbus.com$poster';
-          }
-
-          var dateSpans = box.querySelectorAll('date');
-          String code = dateSpans.isNotEmpty ? dateSpans.first.text : '';
-          if (title.isEmpty) title = code;
-
-          if (detailUrl.isNotEmpty && poster.isNotEmpty) {
-             if (!parsedData.any((e) => e['url'] == detailUrl)) {
-                parsedData.add({
-                  'title': "[$code] $title",
-                  'poster': poster,
-                  'url': detailUrl,
-                  'engine': 'javbus'
-                });
-             }
-          }
+        if (!isSuccess) {
+           throw "所有备用线路均被验证码拦截，防线过高，请晚点再试。";
         }
       }
 
       if (mounted) {
         setState(() {
           if (parsedData.isEmpty) {
-            _errorMessage = "解析失败：未能提取到资源列表。\n网页标题: [$pageTitle]";
+            _errorMessage = "解析失败：未能提取到资源列表。\n最后的网页标题: [$pageTitle]";
           } else {
             _resources = parsedData;
           }
@@ -195,8 +232,12 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           final uc = ucMatch?.group(1) ?? '0';
           final img = imgMatch?.group(1) ?? '';
 
+          // 🌟 动态提取突围成功的域名，用于发送 Ajax 请求！
+          final uri = Uri.parse(data['url']!);
+          final ajaxDomain = '${uri.scheme}://${uri.host}';
+
           final ajaxResp = await Dio().get(
-            'https://www.javbus.com/ajax/uncledatoolsbyajax.php',
+            '$ajaxDomain/ajax/uncledatoolsbyajax.php',
             queryParameters: {
               'gid': gid,
               'lang': 'zh',
