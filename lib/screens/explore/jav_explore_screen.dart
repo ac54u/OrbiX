@@ -27,38 +27,44 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     _fetchAndParse();
   }
 
-  // 🌟 核心：无头爬虫逻辑 (DOM 穿透技术)
   Future<void> _fetchAndParse() async {
     setState(() {
       _isLoading = true;
       _errorMessage = "";
+      _resources = [];
     });
 
     try {
-      // 伪装浏览器请求头，防止被反爬拦截
+      // 🌟 强化请求头，尽可能伪装成真实的 Safari
       final response = await Dio().get(
         'https://www.141jav.com/',
         options: Options(
           headers: {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15",
-            "Accept": "text/html,application/xhtml+xml,application/xml",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh-Hans;q=0.9",
           },
           validateStatus: (status) => true,
         ),
       );
 
       if (response.statusCode != 200) {
-        throw "网络访问受限 (HTTP ${response.statusCode})，请检查网络环境。";
+        throw "网络访问受限 (HTTP ${response.statusCode})";
       }
 
       var document = html_parser.parse(response.data);
 
-      // 🌟 智能锚点抓取法：不依赖特定的 CSS class，直接找磁力链
+      // 🌟 获取网页真实的 Title，用来侦测是否被 Cloudflare 拦截
+      String pageTitle = document.querySelector('title')?.text.trim() ?? '无标题';
+
+      if (pageTitle.toLowerCase().contains('cloudflare') || pageTitle.toLowerCase().contains('just a moment')) {
+        throw "遭遇 Cloudflare 5秒盾拦截，纯接口无法绕过。";
+      }
+
       var magnetLinks = document.querySelectorAll('a[href^="magnet:?"]');
       List<Map<String, String>> parsedData = [];
 
       for (var link in magnetLinks) {
-        // 向上层层回溯，寻找包含这个磁力链的整个“卡片”容器
         var container = link.parent;
         int depth = 0;
         while (container != null && depth < 5) {
@@ -70,7 +76,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         }
 
         if (container != null) {
-          // 在容器内寻找海报和标题
           var imgNode = container.querySelector('img');
           var titleNode = container.querySelector('h1, h2, h3, h4, h5, p > a, a[title]');
 
@@ -80,7 +85,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           String title = titleNode?.text.trim() ?? titleNode?.attributes['title'] ?? '未知番号资源';
           String magnet = link.attributes['href'] ?? '';
 
-          // 去重并校验
           if (magnet.isNotEmpty && poster.isNotEmpty && !parsedData.any((e) => e['magnet'] == magnet)) {
             parsedData.add({
               'title': title,
@@ -93,7 +97,12 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
 
       if (mounted) {
         setState(() {
-          _resources = parsedData;
+          if (parsedData.isEmpty) {
+            // 🌟 如果啥也没抓到，把网页标题打印出来，方便死得明明白白
+            _errorMessage = "未找到磁力链接。\n抓取到的网页标题是: [$pageTitle]";
+          } else {
+            _resources = parsedData;
+          }
           _isLoading = false;
         });
       }
@@ -123,7 +132,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
       builder: (context, isDark, child) {
-        // 彩蛋页面强制使用深邃的暗黑风格
         final bgColor = const Color(0xFF0D0D0D);
         final cardColor = const Color(0xFF1C1C1E);
 
@@ -142,7 +150,23 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           child: _isLoading
               ? const Center(child: CupertinoActivityIndicator(color: Colors.white))
               : _errorMessage.isNotEmpty
-                  ? Center(child: Padding(padding: const EdgeInsets.all(20), child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent))))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: CupertinoColors.destructiveRed, size: 48),
+                            const SizedBox(height: 16),
+                            Text(
+                              _errorMessage,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.5)
+                            ),
+                          ],
+                        )
+                      )
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.only(top: 100, bottom: 40),
                       itemCount: _resources.length,
@@ -165,7 +189,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 高清大图海报
           CachedNetworkImage(
             imageUrl: data['poster']!,
             height: 220,
@@ -174,7 +197,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
             placeholder: (context, url) => Container(height: 220, color: Colors.white10, child: const CupertinoActivityIndicator()),
             errorWidget: (context, url, error) => Container(height: 220, color: Colors.white10, child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
           ),
-          // 底部信息与操作栏
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -190,7 +212,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
                 const SizedBox(width: 12),
                 CupertinoButton(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: CupertinoColors.activeOrange, // 用醒目的橙色
+                  color: CupertinoColors.activeOrange,
                   borderRadius: BorderRadius.circular(20),
                   minSize: 32,
                   onPressed: () => _download(data['magnet']!),
