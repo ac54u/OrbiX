@@ -1,3 +1,5 @@
+import 'dart:io'; // 🌟 新增：处理底层网络请求
+import 'package:dio/io.dart'; // 🌟 新增：Dio 的 IO 适配器
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,7 +44,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     'genre/sub': '中字',
   };
 
-  // JavBus 官方镜像矩阵
   final List<String> _busMirrors = [
     'https://www.javsee.in',
     'https://www.busjav.cc',
@@ -58,6 +59,20 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
 
   Map<String, String> get _activeCategories => _currentEngine == '141jav' ? _categories141 : _categoriesBus;
 
+  // 🌟 核心封装：获取一个无视 SSL 证书报错的“无敌版” Dio
+  Dio _getBypassDio() {
+    final dio = Dio();
+    dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () {
+        final client = HttpClient();
+        // 关键护甲：无论遇到什么烂证书、代理劫持，一律放行！
+        client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+        return client;
+      },
+    );
+    return dio;
+  }
+
   Future<void> _fetchAndParse() async {
     setState(() {
       _isLoading = true;
@@ -66,7 +81,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     });
 
     try {
-      final dio = Dio();
+      final dio = _getBypassDio(); // 🌟 使用无敌版 Dio
       final headers = {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
         "Accept": "text/html,application/xhtml+xml,application/xml",
@@ -76,16 +91,10 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       List<Map<String, String>> parsedData = [];
       String? currentMirror;
 
-      // ==========================================
-      // 引擎 1：141JAV
-      // ==========================================
       if (_currentEngine == '141jav') {
         final response = await dio.get('https://www.141jav.com/$_currentCategory', options: Options(headers: headers, validateStatus: (s) => true));
         _parse141(response.data, parsedData);
       }
-      // ==========================================
-      // 引擎 2：JavBus 自动降级突破
-      // ==========================================
       else {
         bool intercepted = false;
         for (String mirror in _busMirrors) {
@@ -175,10 +184,8 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
   }
 
   void _showVerificationGateway(String url) {
-    // 🌟 修复：先单独声明并初始化控制器
     final WebViewController controller = WebViewController();
 
-    // 🌟 修复：然后再配置属性，完美避开闭包作用域陷阱
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15")
@@ -240,17 +247,18 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     } else {
       Utils.showToast("正在后台深度嗅探磁力链...");
       try {
+        final dio = _getBypassDio(); // 🌟 这里也换成无敌版 Dio
         final headers = {
           "User-Agent": "Mozilla/5.0",
           "Cookie": _busCookie ?? "existmag=all; age_verified=1; over18=1",
           "Referer": data['url']!,
         };
-        final detailResp = await Dio().get(data['url']!, options: Options(headers: headers));
+        final detailResp = await dio.get(data['url']!, options: Options(headers: headers));
         final gidMatch = RegExp(r'var\s+gid\s*=\s*(\d+);').firstMatch(detailResp.data);
         
         if (gidMatch != null) {
           final uri = Uri.parse(data['url']!);
-          final ajaxResp = await Dio().get(
+          final ajaxResp = await dio.get(
             '${uri.scheme}://${uri.host}/ajax/uncledatoolsbyajax.php',
             queryParameters: {
               'gid': gidMatch.group(1),
