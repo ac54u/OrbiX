@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart'; // 🌟 用于震动反馈
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants.dart';
@@ -14,6 +15,9 @@ import 'feedback_screen.dart';
 import 'support_screen.dart';
 import 'user_agreement_screen.dart';
 import 'privacy_policy_screen.dart';
+
+// 🌟 引入隐藏页面彩蛋
+import '../explore/jav_explore_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -32,6 +36,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isOnline = false;
   int _pingMs = 0;
   Timer? _timer;
+
+  // 🌟 彩蛋相关的变量
+  int _easterEggCount = 0;
+  Timer? _easterEggTimer;
 
   // 🚀 所有搜刮器和媒体库的控制器
   final _prowlarrUrlCtrl = TextEditingController();
@@ -58,6 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _easterEggTimer?.cancel(); // 销毁定时器
     _prowlarrUrlCtrl.dispose();
     _prowlarrKeyCtrl.dispose();
     _radarrUrlCtrl.dispose();
@@ -326,7 +335,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 children: [
                                   const Icon(CupertinoIcons.info_circle, size: 16, color: kPrimaryColor),
                                   const SizedBox(width: 6),
-                                  Text("qBittorrent $_qbtVersion", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey, fontSize: 14)),
+                                  // 🌟 将版本号包裹在 GestureDetector 中，实现隐藏彩蛋
+                                  GestureDetector(
+                                    onTap: () {
+                                      _easterEggCount++;
+                                      _easterEggTimer?.cancel();
+                                      _easterEggTimer = Timer(const Duration(seconds: 2), () {
+                                        _easterEggCount = 0; // 2秒内没连点完毕则重置
+                                      });
+
+                                      if (_easterEggCount >= 5) {
+                                        _easterEggCount = 0;
+                                        HapticFeedback.heavyImpact(); // 强震动反馈解锁
+                                        Utils.showToast("🔓 已解锁深网探索模式");
+                                        Navigator.push(
+                                          context,
+                                          CupertinoPageRoute(builder: (_) => const JavExploreScreen())
+                                        );
+                                      }
+                                    },
+                                    behavior: HitTestBehavior.opaque, // 扩大可点击区域
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 20, top: 4, bottom: 4), // 增加一些 padding 让手指更容易点中
+                                      child: Text("qBittorrent $_qbtVersion", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey, fontSize: 14)),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ],
