@@ -16,7 +16,7 @@ dependencies:
   # 本地化支持
   flutter_localizations:
     sdk: flutter
-    html: ^0.15.4
+  html: ^0.15.4
 
   # UI 图标
   cupertino_icons: ^1.0.2
