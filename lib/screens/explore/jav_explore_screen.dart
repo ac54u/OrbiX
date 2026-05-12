@@ -21,6 +21,17 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
   List<Map<String, String>> _resources = [];
   String _errorMessage = "";
 
+  // 🌟 新增：当前选中的分类路由
+  String _currentCategory = '';
+
+  // 🌟 定义分类字典
+  final Map<String, String> _categories = {
+    '': '首页',
+    'new': '最新',
+    'popular/': '热门',
+    'random/': '随机',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -35,8 +46,11 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     });
 
     try {
+      // 🌟 根据选中的分类动态拼接 URL
+      final targetUrl = 'https://www.141jav.com/$_currentCategory';
+
       final response = await Dio().get(
-        'https://www.141jav.com/',
+        targetUrl,
         options: Options(
           headers: {
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15",
@@ -60,7 +74,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       List<Map<String, String>> parsedData = [];
       var allImages = document.querySelectorAll('img');
 
-      // 🌟 核心重构：不再找 magnet，而是寻找带有番号的详情页链接，直接逆向拼出种子直链！
       for (var img in allImages) {
         String poster = img.attributes['src'] ?? '';
         if (poster.isEmpty || poster.contains('avatar') || poster.contains('logo') || poster.contains('icon')) continue;
@@ -76,7 +89,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
         bool found = false;
 
         while (container != null && depth < 6) {
-          // 检查当前容器本身或子元素是否是详情页链接
           String containerHref = container.attributes['href'] ?? '';
           String targetHref = '';
 
@@ -88,13 +100,9 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
           }
 
           if (targetHref.isNotEmpty && targetHref.length > 9) {
-            // 提取番号 (例如 /torrent/NSFS477 -> 拿到 NSFS477)
             String code = targetHref.split('/').last.split('?').first;
-
-            // 🎯 降维打击：直接拼接种子下载直链！qB 完全支持解析 .torrent 链接
             String torrentUrl = 'https://www.141jav.com/download/$code.torrent';
 
-            // 提取标题，去掉没用的换行符
             var titleNode = container.querySelector('.title, .subtitle, .thumbnail-text, h1, h2, h3, h4, h5');
             String title = titleNode?.text.trim().replaceAll('\n', ' ') ?? '';
             if (title.isEmpty || title.length < 3) title = "📦 $code (无标题资源)";
@@ -103,7 +111,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
               parsedData.add({
                 'title': title,
                 'poster': poster,
-                'magnet': torrentUrl, // 这里依然用 magnet 做 key 名，但实际存的是 .torrent 地址
+                'magnet': torrentUrl,
               });
             }
             found = true;
@@ -137,7 +145,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
   void _download(String torrentUrl) async {
     HapticFeedback.mediumImpact();
     Utils.showToast("正在发送至下载节点...");
-    // 无论是 magnet 还是 .torrent 链接，都可以直接推给 qBittorrent 的 add 接口
     bool success = await ApiService.addTorrent(torrentUrl);
     if (success) {
       Utils.showToast("🎉 已成功下发任务！");
@@ -163,34 +170,70 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
             trailing: CupertinoButton(
               padding: EdgeInsets.zero,
               child: const Icon(CupertinoIcons.refresh, color: Colors.white),
-              onPressed: _fetchAndParse,
+              onPressed: _fetchAndParse, // 刷新当前分类
             ),
           ),
-          child: _isLoading
-              ? const Center(child: CupertinoActivityIndicator(color: Colors.white))
-              : _errorMessage.isNotEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: CupertinoColors.destructiveRed, size: 48),
-                            const SizedBox(height: 16),
-                            Text(
-                              _errorMessage,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)
-                            ),
-                          ],
+          child: SafeArea(
+            child: Column(
+              children: [
+                // 🌟 新增：顶部分类切换器
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: CupertinoSlidingSegmentedControl<String>(
+                      backgroundColor: Colors.white10,
+                      thumbColor: const Color(0xFF3A3A3C),
+                      groupValue: _currentCategory,
+                      children: _categories.map((key, value) => MapEntry(
+                        key,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
                         )
-                      )
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(top: 100, bottom: 40),
-                      itemCount: _resources.length,
-                      itemBuilder: (context, index) => _buildResourceCard(_resources[index], cardColor),
+                      )),
+                      onValueChanged: (v) {
+                        if (v != null && v != _currentCategory) {
+                          HapticFeedback.lightImpact();
+                          setState(() => _currentCategory = v);
+                          _fetchAndParse(); // 切换后自动拉取新数据
+                        }
+                      },
                     ),
+                  ),
+                ),
+
+                // 列表内容区域
+                Expanded(
+                  child: _isLoading
+                    ? const Center(child: CupertinoActivityIndicator(color: Colors.white))
+                    : _errorMessage.isNotEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: CupertinoColors.destructiveRed, size: 48),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _errorMessage,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)
+                                  ),
+                                ],
+                              ),
+                            )
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 40),
+                            itemCount: _resources.length,
+                            itemBuilder: (context, index) => _buildResourceCard(_resources[index], cardColor),
+                          ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
