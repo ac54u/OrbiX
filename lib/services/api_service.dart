@@ -456,8 +456,7 @@ class ApiService {
     }
   }
 
-
-// 🌟 1. 从全球最大的开源 Tracker 库获取“神级”节点列表
+  // 🌟 1. 从全球最大的开源 Tracker 库获取“神级”节点列表
   static Future<List<String>> fetchBestTrackers() async {
     try {
       final dio = Dio();
@@ -481,7 +480,7 @@ class ApiService {
     return [];
   }
 
-  // 🌟 2. 智能注入 Tracker 到 qBittorrent 任务 (已修复请求逻辑)
+  // 🌟 2. 智能注入 Tracker 到 qBittorrent 任务
   static Future<bool> injectTrackers(String hash, bool isPrivate) async {
     if (isPrivate) {
       Utils.showToast("⚠️ 保护机制触发：禁止给 PT 种子添加 Tracker！");
@@ -500,11 +499,10 @@ class ApiService {
     try {
       final u = await _url();
       if (u == null) return false;
-      final opts = await _getOptions(); // 🌟 必须获取 Cookie，否则 qB 会报 403
+      final opts = await _getOptions();
 
       final trackerString = bestTrackers.join('\n');
 
-      // 🌟 修复 _qbDio 未定义，并使用标准表单数据格式提交
       final response = await _dio.post(
         '$u/api/v2/torrents/addTrackers',
         data: 'hash=$hash&urls=${Uri.encodeComponent(trackerString)}',
@@ -605,7 +603,7 @@ class ApiService {
     }
   }
 
-// ==========================================
+  // ==========================================
   // 🌟 终极修复：Emby 双重搜索机制
   // ==========================================
   static Future<String?> checkMovieInEmby(String tmdbId, {String? title}) async {
@@ -619,7 +617,7 @@ class ApiService {
     final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
 
     try {
-      // 🚀 尝试 1：通过 TMDB ID 精准搜索（已去掉 Movie 限制，完美兼容电视剧/动漫！）
+      // 🚀 尝试 1：通过 TMDB ID 精准搜索
       var response = await _dio.get(
         '$cleanUrl/emby/Items',
         queryParameters: {
@@ -633,7 +631,7 @@ class ApiService {
         return response.data['Items'][0]['Id'].toString();
       }
 
-      // 🚀 尝试 2：如果 ID 没搜到（Emby可能用了豆瓣/IMDB刮削），自动降级为“片名模糊搜索”！
+      // 🚀 尝试 2：自动降级为“片名模糊搜索”
       if (title != null && title.isNotEmpty) {
         response = await _dio.get(
           '$cleanUrl/emby/Items',
@@ -653,7 +651,7 @@ class ApiService {
     return null;
   }
 
-  // 🌟 新增：获取 Emby 真实流媒体播放地址，供应用内 media_kit 播放器使用
+  // 🌟 获取 Emby 真实流媒体播放地址
   static Future<String?> getEmbyStreamUrl(String itemId) async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('emby_url') ?? '';
@@ -662,8 +660,24 @@ class ApiService {
     if (url.isEmpty || key.isEmpty) return null;
     final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
 
-    // static=true 告诉 Emby 尽量原画直连（因为我们的播放器足够强大，不需要转码）
     return '$cleanUrl/emby/Videos/$itemId/stream?static=true&api_key=$key';
+  }
+
+  // ==========================================
+  // 🌟 终极大招：物理层直连推流 (彻底绕过 Emby 扫描)
+  // ==========================================
+  static Future<String?> getDirectStreamUrl(String torrentName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com/api/sync';
+    final apiToken = prefs.getString('orbix_api_token') ?? 'orbix_super_secret_token_2026';
+
+    // 把末尾的 /api/sync 截掉，换成咱们新建的推流接口 /api/stream
+    final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
+
+    // 拼接出最终的直连流媒体地址
+    final streamUrl = "$baseUrl/api/stream?token=$apiToken&torrent_name=${Uri.encodeComponent(torrentName)}";
+    debugPrint("🚀 物理直连播放地址: $streamUrl");
+    return streamUrl;
   }
 
   static Future<void> playInEmby(String itemId) async {
@@ -803,7 +817,6 @@ class ApiService {
   // --- 🌟 Radarr 交互式搜索联动 API ---
   // ==========================================
 
-  /// 1. 获取特定电影的所有可用种子资源 (Interactive Search)
   static Future<List<dynamic>> getRadarrReleases(int movieId) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('radarr_url');
@@ -822,7 +835,6 @@ class ApiService {
     }
   }
 
-  /// 2. 推送选中的资源到下载器
   static Future<bool> downloadRadarrRelease(Map<String, dynamic> release) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('radarr_url');
@@ -841,7 +853,6 @@ class ApiService {
     }
   }
 
-  /// 3. (辅助) 将电影加入 Radarr 库以解锁 Interactive Search
   static Future<int?> ensureMovieInRadarr(Map<String, dynamic> movieData) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('radarr_url');
@@ -858,9 +869,8 @@ class ApiService {
         return checkResp.data[0]['id'];
       }
 
-      // 不存在则添加，拿到 Radarr 内部的 movieId (这里我们不让它自动搜种子)
       final tempMovieData = Map<String, dynamic>.from(movieData);
-      tempMovieData['addOptions'] = {'searchForMovie': false}; // 🌟 覆盖默认配置，防止全自动抢跑
+      tempMovieData['addOptions'] = {'searchForMovie': false};
 
       bool added = await addMovieToRadarr(tempMovieData);
       if (added) {
@@ -877,7 +887,6 @@ class ApiService {
     return null;
   }
 
-
   // ==========================================
   // --- 🌟 GitHub OTA 热更新探针 ---
   // ==========================================
@@ -885,7 +894,6 @@ class ApiService {
   static Future<Map<String, dynamic>?> checkAppUpdate(String currentVersion) async {
     try {
       final dio = Dio();
-      // 直连抓取你的仓库最新 Release
       final response = await dio.get(
         'https://api.github.com/repos/ac54u/OrbiX/releases/latest',
         options: Options(receiveTimeout: const Duration(seconds: 5)),
@@ -899,7 +907,6 @@ class ApiService {
           String downloadUrl = response.data['html_url'];
           String ipaUrl = '';
 
-          // 智能提取 .ipa 格式的资源，用于巨魔直装
           if (response.data['assets'] != null) {
             for (var asset in response.data['assets']) {
               if (asset['name'].toString().endsWith('.ipa')) {

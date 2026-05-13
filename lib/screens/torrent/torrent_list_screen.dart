@@ -229,68 +229,39 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 
-  // 🌟 智能播放链路：解耦后的整洁代码
+  // 🌟 智能播放链路：绕过 Emby 扫描，直连物理文件秒播
   Future<void> _handlePlay(dynamic t) async {
     final String rawName = t['name'] ?? '';
     final String hash = t['hash'] ?? '';
     if (rawName.isEmpty) return;
 
+    // 获取用来展示在播放器顶部的中文标题（如果没有就用原名）
     final tmdbData = _tmdbCache[hash];
-    if (tmdbData == null || tmdbData['status'] != 'success') {
-      Utils.showToast("未获取到影视元数据，暂无法播放");
-      return;
-    }
+    final String displayTitle = (tmdbData != null && tmdbData['status'] == 'success')
+        ? (tmdbData['title'] ?? rawName)
+        : rawName;
 
-    Utils.showToast("正在查询媒体库...");
-    String? itemId;
+    Utils.showToast("⚡ 正在建立物理直连通道...");
 
-    // 1. 常规搜索：按 TMDB ID 搜索
-    itemId = await ApiService.checkMovieInEmby(tmdbData['id'].toString());
+    // 1. 直接向咱们的 Flask 要直连推流地址
+    String? streamUrl = await ApiService.getDirectStreamUrl(rawName);
 
-    // 2. 物理搜寻：无视名称，直接按文件夹路径模糊匹配
-    if (itemId == null) {
-      itemId = await EmbyService.findItemIdByPath(rawName);
-    }
+    if (streamUrl != null && mounted) {
+      // 2. 顺手发个整理请求给 Emby 慢慢扫（咱们不差它这点时间，权当后台整理了）
+      EmbyService.processAndRefresh(rawName).catchError((_) => false);
 
-    // 3. 如果还是没有，说明确实没入库，开始请求整理并轮询
-    if (itemId == null) {
-      Utils.showToast("🚀 正在触发硬链接整理...");
-
-      // 发送整理请求
-      try {
-        await EmbyService.processAndRefresh(rawName);
-      } catch (e) {
-        debugPrint("整理请求异常: $e");
-      }
-
-      Utils.showToast("⏳ 正在等待 Emby 扫描入库(约10秒)...");
-
-      // 轮询 5 次，每次间隔 2.5 秒
-      for (int i = 0; i < 5; i++) {
-        await Future.delayed(const Duration(milliseconds: 2500));
-        itemId = await EmbyService.findItemIdByPath(rawName);
-        if (itemId != null) break; // 命中了！直接跳出循环
-      }
-    }
-
-    // 4. 审判时刻：拉起播放器
-    if (itemId != null) {
-      String? streamUrl = await ApiService.getEmbyStreamUrl(itemId);
-      if (streamUrl != null && mounted) {
-        Navigator.push(
-          context,
-          CupertinoPageRoute(
-            builder: (context) => PlayerScreen(
-              streamUrl: streamUrl,
-              title: tmdbData['title'] ?? '播放',
-            ),
+      // 3. 拿到了直链，不等 Emby，直接拉起媒体播放器！
+      Navigator.push(
+        context,
+        CupertinoPageRoute(
+          builder: (context) => PlayerScreen(
+            streamUrl: streamUrl,
+            title: displayTitle,
           ),
-        );
-      } else {
-        Utils.showToast("❌ 解析播放流失败");
-      }
+        ),
+      );
     } else {
-      Utils.showToast("⚠️ Emby 扫描仍在进行中，请稍后再点播放");
+      Utils.showToast("❌ 无法获取物理推流通道");
     }
   }
 
