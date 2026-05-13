@@ -62,15 +62,19 @@ class _UpdateBadgeWidgetState extends State<UpdateBadgeWidget> {
             onPressed: () async {
               Navigator.pop(ctx);
               
-              String ipaUrl = _updateInfo!['ipaUrl'];
-              String htmlUrl = _updateInfo!['url'];
+              // 加上 ?? '' 防止后端数据没有这两个字段时报错崩溃
+              String ipaUrl = _updateInfo!['ipaUrl'] ?? '';
+              String htmlUrl = _updateInfo!['url'] ?? '';
               
               // 🚀 核心：通过 URL Scheme 直接唤醒 TrollStore 下载并覆盖安装
               if (ipaUrl.isNotEmpty) {
+                // 🌟 极度关键：对下载链接进行 URL 编码，防止 iOS 截断特殊字符
+                final encodedUrl = Uri.encodeComponent(ipaUrl);
+
                 // 优先尝试唤醒注入了巨魔助手的“提示(tips)”，其次尝试唤醒巨魔本体
                 List<String> trollSchemes = [
-                  'tips://install?url=$ipaUrl',
-                  'trollstore://install?url=$ipaUrl'
+                  'tips://install?url=$encodedUrl',      // 👈 使用编码后的链接
+                  'trollstore://install?url=$encodedUrl' // 👈 使用编码后的链接
                 ];
 
                 for (String scheme in trollSchemes) {
