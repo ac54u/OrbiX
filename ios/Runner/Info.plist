@@ -37,6 +37,14 @@
 		</dict>
 	</array>
 
+	<!-- 🌟 这里是为你新增的第三方应用跳转白名单 🌟 -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tips</string>
+		<string>trollstore</string>
+		<string>apple-magnifier</string>
+	</array>
+
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>LSRequiresIPhoneOS</key>
