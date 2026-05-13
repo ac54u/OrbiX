@@ -63,6 +63,26 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  // 🚀 核心新增：触发一键打鸡血逻辑
+  void _handleInjectTrackers() async {
+    HapticFeedback.heavyImpact(); // 强力震动反馈
+    
+    final hash = _currentTorrent['hash'];
+    final bool isPrivate = _currentTorrent['private'] ?? false;
+
+    if (isPrivate) {
+      Utils.showToast("⚠️ PT 种子受保护，禁止注入公共 Tracker");
+      return;
+    }
+
+    Utils.showToast("正在同步全球最新 Tracker...");
+    bool success = await ApiService.injectTrackers(hash, isPrivate);
+    
+    if (success) {
+      _refreshData(); // 成功后刷新一次数据
+    }
+  }
+
   // 🌟 唤出高级感路径迁移面板
   void _showMoveLocationSheet(String hash, String currentPath, bool isDark) {
     final TextEditingController pathCtrl = TextEditingController(text: currentPath);
@@ -115,7 +135,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                     HapticFeedback.mediumImpact();
                     Utils.showToast("正在发送迁移指令...");
 
-                    // 🚀 调用刚刚在 ApiService 新增的接口
                     final error = await ApiService.setLocation(hash, newPath);
                     if (error == null) {
                        HapticFeedback.lightImpact();
@@ -213,6 +232,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
 
     final movieData = widget.movieData;
     final savePath = t['save_path'] ?? '/downloads';
+    final bool isPrivate = t['private'] ?? false;
 
     return ListView(
       padding: EdgeInsets.zero,
@@ -239,7 +259,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           ],
         ),
 
-        // 📁 2. 🌟 核心新增：存储位置与迁移卡片
+        // 📁 2. 存储位置与迁移卡片
         CupertinoListSection.insetGrouped(
           backgroundColor: Colors.transparent,
           margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -253,10 +273,9 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
               onTap: () => _showMoveLocationSheet(t['hash'], savePath, isDark),
               child: Container(
                 padding: const EdgeInsets.all(16),
-                color: Colors.transparent, // 保证整个区域可点击
+                color: Colors.transparent, 
                 child: Row(
                   children: [
-                    // 高级感的带底色图标
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -266,7 +285,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                       child: const Icon(CupertinoIcons.folder_fill, color: CupertinoColors.activeBlue, size: 22),
                     ),
                     const SizedBox(width: 14),
-                    // 路径信息
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,7 +305,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // 胶囊样式的操作按钮
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
@@ -309,7 +326,68 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
           ],
         ),
 
-        // 📉 3. 传输数据卡片
+        // 🚀 3. 🌟 核心新增：高级操作卡片 (打鸡血按钮)
+        CupertinoListSection.insetGrouped(
+          backgroundColor: Colors.transparent,
+          margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          decoration: BoxDecoration(
+            color: isDark ? kCardColorDark : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          header: Text("高级操作", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey)),
+          children: [
+            GestureDetector(
+              onTap: _handleInjectTrackers,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.transparent,
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isPrivate 
+                          ? Colors.grey.withOpacity(0.1) 
+                          : CupertinoColors.activeGreen.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        CupertinoIcons.bolt_fill, 
+                        color: isPrivate ? Colors.grey : CupertinoColors.activeGreen, 
+                        size: 22
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "一键打鸡血", 
+                            style: TextStyle(
+                              fontSize: 15, 
+                              fontWeight: FontWeight.bold, 
+                              color: isPrivate ? Colors.grey : (isDark ? Colors.white : Colors.black)
+                            )
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            isPrivate ? "PT 种子禁止添加公共 Tracker" : "从全球同步优质 Tracker 强力加速", 
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!isPrivate)
+                      const Icon(CupertinoIcons.chevron_right, size: 16, color: Colors.grey),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        // 📉 4. 传输数据卡片
         CupertinoListSection.insetGrouped(
           backgroundColor: Colors.transparent,
           margin: const EdgeInsets.fromLTRB(16, 4, 16, 20),
@@ -327,6 +405,8 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       ],
     );
   }
+
+  // ... 后面部分代码 (PeersView, FilesView, row等) 保持不变 ...
 
   Widget _buildPeersView(bool isDark) {
     if (_peers.isEmpty) {
