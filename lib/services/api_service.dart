@@ -847,4 +847,65 @@ class ApiService {
     }
     return null;
   }
+
+
+  // ==========================================
+  // --- 🌟 GitHub OTA 热更新探针 ---
+  // ==========================================
+
+  static Future<Map<String, dynamic>?> checkAppUpdate(String currentVersion) async {
+    try {
+      final dio = Dio();
+      // 直连抓取你的仓库最新 Release
+      final response = await dio.get(
+        'https://api.github.com/repos/ac54u/OrbiX/releases/latest',
+        options: Options(receiveTimeout: const Duration(seconds: 5)),
+      );
+      
+      if (response.statusCode == 200) {
+        String latestTag = response.data['tag_name']?.toString().replaceAll('v', '') ?? '';
+        String current = currentVersion.replaceAll('v', '');
+        
+        if (_isNewerVersion(latestTag, current)) {
+          String downloadUrl = response.data['html_url'];
+          String ipaUrl = '';
+          
+          // 智能提取 .ipa 格式的资源，用于巨魔直装
+          if (response.data['assets'] != null) {
+            for (var asset in response.data['assets']) {
+              if (asset['name'].toString().endsWith('.ipa')) {
+                ipaUrl = asset['browser_download_url'];
+                break;
+              }
+            }
+          }
+          
+          return {
+            'hasUpdate': true,
+            'version': latestTag,
+            'notes': response.data['body'] ?? '常规细节优化与 Bug 修复。',
+            'ipaUrl': ipaUrl,
+            'url': downloadUrl,
+          };
+        }
+      }
+    } catch (e) {
+      debugPrint("获取 GitHub Release 失败: $e");
+    }
+    return null;
+  }
+
+  static bool _isNewerVersion(String latest, String current) {
+    try {
+      List<int> l = latest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      List<int> c = current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      for (int i = 0; i < 3; i++) {
+        int lv = i < l.length ? l[i] : 0;
+        int cv = i < c.length ? c[i] : 0;
+        if (lv > cv) return true;
+        if (lv < cv) return false;
+      }
+    } catch (_) {}
+    return false;
+  }
 }
