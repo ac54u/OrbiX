@@ -7,8 +7,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:quick_actions/quick_actions.dart';
 
+// 🌟 引入媒体播放器引擎，用于全局初始化
+import 'package:media_kit/media_kit.dart';
+
 // 引入您刚才发的那个配色文件
-import 'core/constants.dart'; 
+import 'core/constants.dart';
 import 'services/server_manager.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/main_tab_scaffold.dart';
@@ -21,7 +24,10 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // 🌟 强制将播放器引擎的初始化提前到 App 启动的最最最前面！
+  MediaKit.ensureInitialized();
+
   // 移除强制的 Style 设置，交给后面动态判断
   // SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
 
@@ -74,7 +80,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.initState();
     // 注册监听器
     WidgetsBinding.instance.addObserver(this);
-    
+
     // 初始化时先判断一次当前系统亮度，更新您的 themeNotifier
     // 注意：addPostFrameCallback 确保 context 可用
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -147,13 +153,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           theme: CupertinoThemeData(
             brightness: isDark ? Brightness.dark : Brightness.light,
             primaryColor: kPrimaryColor, // 您的蓝色
-            
+
             // 背景色：使用您定义的常量
             scaffoldBackgroundColor: isDark ? kBgColorDark : kBgColorLight,
-            
+
             // 导航栏/卡片背景：使用您定义的常量
             barBackgroundColor: isDark ? kCardColorDark : const Color(0xCCF9F9F9),
-            
+
             textTheme: CupertinoTextThemeData(
               textStyle: GoogleFonts.outfit(
                 color: isDark ? Colors.white : Colors.black,
