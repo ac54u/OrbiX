@@ -18,6 +18,7 @@ import '../../services/live_activity_service.dart';
 import 'torrent_detail_screen.dart';
 import 'add_torrent_sheet.dart';
 import '../../widgets/skeleton_card.dart';
+import '../player_screen.dart'; // 🌟 引入刚建好的播放器
 
 class TorrentListScreen extends StatefulWidget {
   const TorrentListScreen({super.key});
@@ -518,22 +519,42 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 motion: const ScrollMotion(),
                 extentRatio: 0.5,
                 children: [
-                  if (isStopped)
-                    SlidableAction(
-                      onPressed: (ctx) => _executeAction(hash, 'start'),
-                      backgroundColor: const Color(0xFF34C759),
-                      foregroundColor: Colors.white,
-                      icon: CupertinoIcons.play_arrow_solid,
-                      label: '启动',
-                    )
-                  else
-                    SlidableAction(
-                      onPressed: (ctx) => _executeAction(hash, 'pause'),
-                      backgroundColor: const Color(0xFFFF9500),
-                      foregroundColor: Colors.white,
-                      icon: CupertinoIcons.pause_fill,
-                      label: '暂停',
-                    ),
+                  // 🌟 这里已替换为播放逻辑
+                  SlidableAction(
+                    onPressed: (ctx) async {
+                      final tmdbData = _tmdbCache[hash];
+                      if (tmdbData == null || tmdbData['status'] != 'success') {
+                        Utils.showToast("未获取到影视元数据，暂无法播放");
+                        return;
+                      }
+                      Utils.showToast("正在获取播放流...");
+                      String? itemId = await ApiService.checkMovieInEmby(tmdbData['id'].toString());
+                      if (itemId != null) {
+                        String? streamUrl = await ApiService.getEmbyStreamUrl(itemId);
+                        if (streamUrl != null) {
+                          if (context.mounted) {
+                            Navigator.push(
+                              context,
+                              CupertinoPageRoute(
+                                builder: (context) => PlayerScreen(
+                                  streamUrl: streamUrl,
+                                  title: tmdbData['title'] ?? '播放',
+                                ),
+                              ),
+                            );
+                          }
+                        } else {
+                          Utils.showToast("解析播放流失败");
+                        }
+                      } else {
+                        Utils.showToast("Emby 中暂未找到该资源，请等待刮削");
+                      }
+                    },
+                    backgroundColor: CupertinoColors.activeBlue,
+                    foregroundColor: Colors.white,
+                    icon: CupertinoIcons.play_rectangle_fill,
+                    label: '播放',
+                  ),
                   SlidableAction(
                     onPressed: (ctx) => _executeAction(hash, 'delete'),
                     backgroundColor: const Color(0xFFFF3B30),
