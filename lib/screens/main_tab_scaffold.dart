@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../main.dart'; // 引入 main.dart 以使用全局 notification 插件
 import '../services/api_service.dart';
 import '../core/constants.dart';
+import '../widgets/update_badge_widget.dart'; // 🌟 引入刚创建的更新组件
 
 // 引入四个主页面
 import 'torrent/torrent_list_screen.dart';
@@ -57,7 +58,6 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
         final oldState = _lastStates[hash];
 
         // --- 情况一：刚刚下载完成 ---
-        // 旧状态是“下载中”，新状态是“做种”或“完成”
         if (oldState != null && 
            (oldState == 'downloading' || oldState == 'forcedDL') && 
            (state == 'up' || state == 'uploading' || state == 'pausedUP' || state == 'stalledUP' || state == 'completed')) {
@@ -65,8 +65,7 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
           _showNotification("下载完成 🎉", name);
         }
 
-        // --- 情况二：任务出错了 (硬盘满、读写错误、文件丢失) ---
-        // 只有当旧状态“不是错误”，而新状态“是错误”时才通知 (防止一直弹窗)
+        // --- 情况二：任务出错了 ---
         if (oldState != null && 
            oldState != 'error' && oldState != 'missingFiles' &&
            (state == 'error' || state == 'missingFiles')) {
@@ -80,7 +79,6 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
     });
   }
 
-  // 🔔 通用的通知发送方法 (支持自定义标题和内容)
   Future<void> _showNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
       'download_channel',
@@ -119,42 +117,45 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
           tabBar: CupertinoTabBar(
             onTap: _onTap,
             currentIndex: _currentIndex,
-            // 🌟 更柔和的毛玻璃背景调色
             backgroundColor: isDark 
-                ? const Color(0xE6141414) // 深色模式下更深邃的半透明黑
-                : const Color(0xE6F8F8F8), // 浅色模式下纯净的半透明灰白
-            activeColor: CupertinoColors.activeBlue, // 采用更原生的系统蓝
-            inactiveColor: CupertinoColors.systemGrey, // 采用标准的系统灰
+                ? const Color(0xE6141414) 
+                : const Color(0xE6F8F8F8),
+            activeColor: CupertinoColors.activeBlue,
+            inactiveColor: CupertinoColors.systemGrey,
             border: Border(
               top: BorderSide(
                 color: isDark ? Colors.white10 : Colors.black12,
-                width: 0.5, // 细细的一条顶边线，更显精致
+                width: 0.5,
               ),
             ),
             items: [
-              // 🌟 1. 下载 Tab
-              BottomNavigationBarItem(
-                icon: const Icon(CupertinoIcons.arrow_down_circle, size: 26),
-                activeIcon: const Icon(CupertinoIcons.arrow_down_circle_fill, size: 28),
+              // 1. 下载 Tab
+              const BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.arrow_down_circle, size: 26),
+                activeIcon: Icon(CupertinoIcons.arrow_down_circle_fill, size: 28),
                 label: "下载",
               ),
-              // 🌟 2. 统计 Tab
-              BottomNavigationBarItem(
-                icon: const Icon(CupertinoIcons.chart_bar, size: 26),
-                activeIcon: const Icon(CupertinoIcons.chart_bar_fill, size: 28),
+              // 2. 统计 Tab
+              const BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.chart_bar, size: 26),
+                activeIcon: Icon(CupertinoIcons.chart_bar_fill, size: 28),
                 label: "统计",
               ),
-              // 🌟 3. 搜索 Tab
-              BottomNavigationBarItem(
-                icon: const Icon(CupertinoIcons.search, size: 26),
-                // 搜索通常没有对应的 fill 图标，用加粗和微小放大来区分状态
-                activeIcon: const Icon(CupertinoIcons.search, size: 28),
+              // 3. 搜索 Tab
+              const BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.search, size: 26),
+                activeIcon: Icon(CupertinoIcons.search, size: 28),
                 label: "搜索",
               ),
-              // 🌟 4. 设置 Tab
-              BottomNavigationBarItem(
-                icon: const Icon(CupertinoIcons.gear_alt, size: 26),
-                activeIcon: const Icon(CupertinoIcons.gear_alt_fill, size: 28),
+              // 🌟 4. 设置 Tab (已集成 UpdateBadgeWidget 自动更新小黄点)
+              const BottomNavigationBarItem(
+                // 这里的 key 是为了确保状态被正确保留
+                icon: UpdateBadgeWidget(
+                  child: Icon(CupertinoIcons.gear_alt, size: 26),
+                ),
+                activeIcon: UpdateBadgeWidget(
+                  child: Icon(CupertinoIcons.gear_alt_fill, size: 28),
+                ),
                 label: "设置",
               ),
             ],
