@@ -5,7 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
 class UpdateBadgeWidget extends StatefulWidget {
-  const UpdateBadgeWidget({super.key});
+  final Widget child; // 👈 1. 增加接收传入 Widget 的属性
+
+  const UpdateBadgeWidget({
+    super.key, 
+    required this.child, // 👈 2. 构造函数中声明必传 child
+  });
 
   @override
   State<UpdateBadgeWidget> createState() => _UpdateBadgeWidgetState();
@@ -89,11 +94,7 @@ class _UpdateBadgeWidgetState extends State<UpdateBadgeWidget> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Icon(
-            CupertinoIcons.settings, // 你可以改成别的图标
-            color: _hasUpdate ? CupertinoColors.activeOrange : Colors.grey,
-            size: 24,
-          ),
+          widget.child, // 👈 3. 原封不动地渲染外部传进来的 Icon
           if (_hasUpdate)
             Positioned(
               top: -2,
