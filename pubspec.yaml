@@ -45,9 +45,10 @@ dependencies:
   url_launcher: ^6.3.2
   package_info_plus: ^8.0.0 # 顺便检查一下，之前代码里用到了包信息获取，如果没有也顺手补上
 
-  media_kit: ^1.1.10
-  media_kit_video: ^1.1.10
-  media_kit_libs_video_ios: ^1.1.10 # iOS 专属硬解库
+# 🌟 替换为以下正确的 media_kit 依赖
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
 
 dev_dependencies:
   flutter_test:
