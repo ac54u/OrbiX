@@ -347,7 +347,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       if (_easterEggCount >= 5) {
                                         _easterEggCount = 0;
                                         HapticFeedback.heavyImpact(); // 强震动反馈解锁
-                                        Utils.showToast("🔓 已解锁深网探索模式");
+                                        Utils.showToast("已解锁深网探索模式");
                                         Navigator.push(
                                           context,
                                           CupertinoPageRoute(builder: (_) => const JavExploreScreen())

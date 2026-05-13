@@ -49,14 +49,14 @@ class EmbyService {
       final prefs = await SharedPreferences.getInstance();
       final embyUrl = prefs.getString('emby_url') ?? 'https://emby.dmitt.com';
       final apiKey = prefs.getString('emby_api_key') ?? 'e1610959a3d1443db6554150602fdf12';
+      final cleanUrl = embyUrl.endsWith('/') ? embyUrl.substring(0, embyUrl.length - 1) : embyUrl;
 
-      // 获取清洗后的标准名称，例如 "Pegasus 3 (2026)"
+      // 🌟 核心优化：降维打击，全部转为小写并去除头尾空格
       final parsed = Utils.cleanFileName(torrentName);
-      final cleanName = "${parsed['title']} (${parsed['year']})";
+      final searchTitle = parsed['title'].toString().toLowerCase().trim();
 
-      // 🌟 核心修改：去掉了 IncludeItemTypes=Movie，防止 Emby 偶尔刮削错乱导致搜不到
-      // 请求 Emby 最近添加的 50 个项目，并要求返回 Path 字段
-      final url = "$embyUrl/Items?Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=50&Fields=Path&api_key=$apiKey";
+      // 必须带上 Fields=Path
+      final url = "$cleanUrl/emby/Items?Recursive=true&IncludeItemTypes=Movie&SortBy=DateCreated&SortOrder=Descending&Limit=50&Fields=Path&api_key=$apiKey";
 
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -64,10 +64,11 @@ class EmbyService {
         final List items = data['Items'] ?? [];
 
         for (var item in items) {
-          final String path = item['Path'] ?? '';
-          // 🌟 核心匹配逻辑：检查物理路径是否包含我们的清洗名
-          if (path.contains(cleanName)) {
-            print("🎯 物理路径匹配成功！刮削标题: ${item['Name']}, ID: ${item['Id']}");
+          final String path = (item['Path'] ?? '').toString().toLowerCase();
+
+          // 只要硬盘路径包含这个小写的片名，就算命中！
+          if (path.contains(searchTitle)) {
+            print("🎯 超级模糊匹配成功！ID: ${item['Id']}");
             return item['Id'].toString();
           }
         }
@@ -75,6 +76,6 @@ class EmbyService {
     } catch (e) {
       print("❌ Emby 路径搜索异常: $e");
     }
-    return null; // 没找到
+    return null; // 彻底没找到
   }
 }

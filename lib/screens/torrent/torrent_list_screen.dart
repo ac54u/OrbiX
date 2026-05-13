@@ -229,6 +229,71 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 
+  // 🌟 智能播放链路：解耦后的整洁代码
+  Future<void> _handlePlay(dynamic t) async {
+    final String rawName = t['name'] ?? '';
+    final String hash = t['hash'] ?? '';
+    if (rawName.isEmpty) return;
+
+    final tmdbData = _tmdbCache[hash];
+    if (tmdbData == null || tmdbData['status'] != 'success') {
+      Utils.showToast("未获取到影视元数据，暂无法播放");
+      return;
+    }
+
+    Utils.showToast("正在查询媒体库...");
+    String? itemId;
+
+    // 1. 常规搜索：按 TMDB ID 搜索
+    itemId = await ApiService.checkMovieInEmby(tmdbData['id'].toString());
+
+    // 2. 物理搜寻：无视名称，直接按文件夹路径模糊匹配
+    if (itemId == null) {
+      itemId = await EmbyService.findItemIdByPath(rawName);
+    }
+
+    // 3. 如果还是没有，说明确实没入库，开始请求整理并轮询
+    if (itemId == null) {
+      Utils.showToast("🚀 正在触发硬链接整理...");
+
+      // 发送整理请求
+      try {
+        await EmbyService.processAndRefresh(rawName);
+      } catch (e) {
+        debugPrint("整理请求异常: $e");
+      }
+
+      Utils.showToast("⏳ 正在等待 Emby 扫描入库(约10秒)...");
+
+      // 轮询 5 次，每次间隔 2.5 秒
+      for (int i = 0; i < 5; i++) {
+        await Future.delayed(const Duration(milliseconds: 2500));
+        itemId = await EmbyService.findItemIdByPath(rawName);
+        if (itemId != null) break; // 命中了！直接跳出循环
+      }
+    }
+
+    // 4. 审判时刻：拉起播放器
+    if (itemId != null) {
+      String? streamUrl = await ApiService.getEmbyStreamUrl(itemId);
+      if (streamUrl != null && mounted) {
+        Navigator.push(
+          context,
+          CupertinoPageRoute(
+            builder: (context) => PlayerScreen(
+              streamUrl: streamUrl,
+              title: tmdbData['title'] ?? '播放',
+            ),
+          ),
+        );
+      } else {
+        Utils.showToast("❌ 解析播放流失败");
+      }
+    } else {
+      Utils.showToast("⚠️ Emby 扫描仍在进行中，请稍后再点播放");
+    }
+  }
+
   List<dynamic> _processTorrents() {
     List<dynamic> list = List.from(_torrents);
     if (_sortOption != 'default') {
@@ -520,76 +585,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 extentRatio: 0.5,
                 children: [
                   SlidableAction(
-                    onPressed: (ctx) async {
-                      final tmdbData = _tmdbCache[hash];
-                      if (tmdbData == null || tmdbData['status'] != 'success') {
-                        Utils.showToast("未获取到影视元数据，暂无法播放");
-                        return;
-                      }
-
-                      Utils.showToast("正在查询媒体库...");
-                      String? itemId;
-                      final String rawName = t['name'] ?? '';
-
-                      // 1. 常规搜索：搜 ID 和 片名
-                      itemId = await ApiService.checkMovieInEmby(
-                        tmdbData['id'].toString(),
-                        title: tmdbData['title']
-                      );
-
-                      // 2. 物理搜寻：用文件名硬搜
-                      if (itemId == null) {
-                        itemId = await EmbyService.findItemIdByPath(rawName);
-                      }
-
-                      // 🌟 3. 核心改动：如果找不到，触发整理并“原地等待”！
-                      if (itemId == null) {
-                        Utils.showToast("正在触发硬链接整理...");
-                        // 等待 Python 脚本返回成功
-                        bool linkSuccess = await EmbyService.processAndRefresh(rawName);
-
-                        if (linkSuccess) {
-                          Utils.showToast("⏳ 正在等待 Emby 扫描入库(约10秒)...");
-
-                          // 🚀 开始轮询：每隔 2.5 秒查一次，最多查 6 次 (15秒)
-                          for (int i = 0; i < 6; i++) {
-                            await Future.delayed(const Duration(milliseconds: 2500));
-                            itemId = await EmbyService.findItemIdByPath(rawName);
-                            if (itemId != null) {
-                              break; // 🎯 Emby 扫到了！跳出循环准备播放
-                            }
-                          }
-
-                          // 如果等了 15 秒还是没找到，可能 Emby 卡住了，提示用户
-                          if (itemId == null) {
-                            Utils.showToast("⚠️ Emby 扫描仍在进行中，请稍后再点播放");
-                            return;
-                          }
-                        } else {
-                          return; // 硬链接失败，直接退出
-                        }
-                      }
-
-                      // 🎬 最终步骤：既然拿到了 itemId，直接拉起播放器！
-                      if (itemId != null) {
-                        String? streamUrl = await ApiService.getEmbyStreamUrl(itemId);
-                        if (streamUrl != null) {
-                          if (context.mounted) {
-                            Navigator.push(
-                              context,
-                              CupertinoPageRoute(
-                                builder: (context) => PlayerScreen(
-                                  streamUrl: streamUrl,
-                                  title: tmdbData['title'] ?? '播放',
-                                ),
-                              ),
-                            );
-                          }
-                        } else {
-                          Utils.showToast("❌ 解析播放流失败");
-                        }
-                      }
-                    },
+                    onPressed: (ctx) => _handlePlay(t),
                     backgroundColor: CupertinoColors.activeBlue,
                     foregroundColor: Colors.white,
                     icon: CupertinoIcons.play_rectangle_fill,
