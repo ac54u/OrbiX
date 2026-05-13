@@ -5,7 +5,8 @@ import '../core/utils.dart';
 
 class EmbyService {
   /// 1. 触发后端进行硬链接整理并刷新 Emby 库
-  static Future<void> processAndRefresh(String torrentName) async {
+  /// 🌟 核心修改：返回 Future<bool>，让前端知道是否可以开始轮询等待 Emby 扫描
+  static Future<bool> processAndRefresh(String torrentName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com/api/sync';
@@ -29,12 +30,15 @@ class EmbyService {
       final result = jsonDecode(response.body);
 
       if (response.statusCode == 200 && result['status'] == 'success') {
-        Utils.showToast("✅ 整理成功：${result['message']}");
+        Utils.showToast("✅ 整理成功，等待扫描...");
+        return true; // 🌟 成功触发硬链接，允许前端开始轮询
       } else {
-        Utils.showToast("❌ 整理失败：${result['message'] ?? '服务器响应异常'}");
+        Utils.showToast("❌ 整理失败：${result['message'] ?? '未知错误'}");
+        return false; // 触发失败，拦截前端轮询
       }
     } catch (e) {
       Utils.showToast("❌ 无法连接到指挥中枢");
+      return false; // 网络异常，拦截前端轮询
     }
   }
 
@@ -50,8 +54,9 @@ class EmbyService {
       final parsed = Utils.cleanFileName(torrentName);
       final cleanName = "${parsed['title']} (${parsed['year']})";
 
+      // 🌟 核心修改：去掉了 IncludeItemTypes=Movie，防止 Emby 偶尔刮削错乱导致搜不到
       // 请求 Emby 最近添加的 50 个项目，并要求返回 Path 字段
-      final url = "$embyUrl/Items?Recursive=true&IncludeItemTypes=Movie&SortBy=DateCreated&SortOrder=Descending&Limit=50&Fields=Path&api_key=$apiKey";
+      final url = "$embyUrl/Items?Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=50&Fields=Path&api_key=$apiKey";
 
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -62,13 +67,13 @@ class EmbyService {
           final String path = item['Path'] ?? '';
           // 🌟 核心匹配逻辑：检查物理路径是否包含我们的清洗名
           if (path.contains(cleanName)) {
-            print("🎯 匹配成功！刮削标题: ${item['Name']}, ID: ${item['Id']}");
+            print("🎯 物理路径匹配成功！刮削标题: ${item['Name']}, ID: ${item['Id']}");
             return item['Id'].toString();
           }
         }
       }
     } catch (e) {
-      print("❌ Emby 搜索异常: $e");
+      print("❌ Emby 路径搜索异常: $e");
     }
     return null; // 没找到
   }

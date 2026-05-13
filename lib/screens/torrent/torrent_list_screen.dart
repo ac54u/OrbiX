@@ -519,7 +519,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 motion: const ScrollMotion(),
                 extentRatio: 0.5,
                 children: [
-                  // 🌟🌟🌟 核心修改点：播放按钮逻辑 🌟🌟🌟
                   SlidableAction(
                     onPressed: (ctx) async {
                       final tmdbData = _tmdbCache[hash];
@@ -527,14 +526,51 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         Utils.showToast("未获取到影视元数据，暂无法播放");
                         return;
                       }
-                      Utils.showToast("正在获取播放流...");
 
-                      // 🚀 传入 title 进行双重保障搜索
-                      String? itemId = await ApiService.checkMovieInEmby(
+                      Utils.showToast("正在查询媒体库...");
+                      String? itemId;
+                      final String rawName = t['name'] ?? '';
+
+                      // 1. 常规搜索：搜 ID 和 片名
+                      itemId = await ApiService.checkMovieInEmby(
                         tmdbData['id'].toString(),
-                        title: tmdbData['title'] // 👈 新增兜底：用片名搜
+                        title: tmdbData['title']
                       );
 
+                      // 2. 物理搜寻：用文件名硬搜
+                      if (itemId == null) {
+                        itemId = await EmbyService.findItemIdByPath(rawName);
+                      }
+
+                      // 🌟 3. 核心改动：如果找不到，触发整理并“原地等待”！
+                      if (itemId == null) {
+                        Utils.showToast("正在触发硬链接整理...");
+                        // 等待 Python 脚本返回成功
+                        bool linkSuccess = await EmbyService.processAndRefresh(rawName);
+
+                        if (linkSuccess) {
+                          Utils.showToast("⏳ 正在等待 Emby 扫描入库(约10秒)...");
+
+                          // 🚀 开始轮询：每隔 2.5 秒查一次，最多查 6 次 (15秒)
+                          for (int i = 0; i < 6; i++) {
+                            await Future.delayed(const Duration(milliseconds: 2500));
+                            itemId = await EmbyService.findItemIdByPath(rawName);
+                            if (itemId != null) {
+                              break; // 🎯 Emby 扫到了！跳出循环准备播放
+                            }
+                          }
+
+                          // 如果等了 15 秒还是没找到，可能 Emby 卡住了，提示用户
+                          if (itemId == null) {
+                            Utils.showToast("⚠️ Emby 扫描仍在进行中，请稍后再点播放");
+                            return;
+                          }
+                        } else {
+                          return; // 硬链接失败，直接退出
+                        }
+                      }
+
+                      // 🎬 最终步骤：既然拿到了 itemId，直接拉起播放器！
                       if (itemId != null) {
                         String? streamUrl = await ApiService.getEmbyStreamUrl(itemId);
                         if (streamUrl != null) {
@@ -550,12 +586,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                             );
                           }
                         } else {
-                          Utils.showToast("解析播放流失败");
+                          Utils.showToast("❌ 解析播放流失败");
                         }
-                      } else {
-                        // 🚀 终极体验优化：没找到就自动发刮削指令，并提示用户
-                        Utils.showToast("库中未找到，已发指令让 Emby 刷新硬盘，请稍候再试");
-                        EmbyService.processAndRefresh(t['name'] ?? '');
                       }
                     },
                     backgroundColor: CupertinoColors.activeBlue,
@@ -580,7 +612,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-  // --- UI 构建方法保持不变，这里省略展示，全部原封不动 ---
   Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
