@@ -18,7 +18,7 @@ import '../../services/live_activity_service.dart';
 import 'torrent_detail_screen.dart';
 import 'add_torrent_sheet.dart';
 import '../../widgets/skeleton_card.dart';
-import '../player_screen.dart'; // 🌟 引入刚建好的播放器
+import '../player_screen.dart';
 
 class TorrentListScreen extends StatefulWidget {
   const TorrentListScreen({super.key});
@@ -29,10 +29,10 @@ class TorrentListScreen extends StatefulWidget {
 
 class _TorrentListScreenState extends State<TorrentListScreen> {
   List<dynamic> _torrents = [];
-  
+
   final Map<String, Map<String, dynamic>> _tmdbCache = {};
   final Map<String, double> _previousProgress = {};
-  
+
   bool _isLoggedIn = false;
   Timer? _timer;
   int _refreshRate = 3;
@@ -218,7 +218,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     } else {
       Utils.showToast("操作成功");
       _fetchTorrents();
-      
+
       if (action == 'start' || action == 'forceStart') {
         final target = _torrents.firstWhere((e) => e['hash'] == hash, orElse: () => null);
         final name = target != null ? target['name'] : '下载任务';
@@ -282,7 +282,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   @override
   Widget build(BuildContext context) {
     final displayList = _processTorrents();
-    
+
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
       builder: (context, isDark, child) {
@@ -320,10 +320,10 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   return Future.delayed(const Duration(milliseconds: 500));
                 },
               ),
-              
+
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                sliver: (!_isLoggedIn && displayList.isEmpty) 
+                sliver: (!_isLoggedIn && displayList.isEmpty)
                     ? SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) => SkeletonCard(isDark: isDark, isGrid: false),
@@ -489,8 +489,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 context: context,
                 builder: (context) => RadarrStyleMovieSheet(
                   title: movieData['title'],
-                  year: movieData['release_date'].toString().length >= 4 
-                      ? movieData['release_date'].toString().substring(0, 4) 
+                  year: movieData['release_date'].toString().length >= 4
+                      ? movieData['release_date'].toString().substring(0, 4)
                       : (cleanYear ?? ''),
                   overview: movieData['overview'],
                   posterUrl: movieData['poster_url'],
@@ -519,7 +519,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 motion: const ScrollMotion(),
                 extentRatio: 0.5,
                 children: [
-                  // 🌟 这里已替换为播放逻辑
+                  // 🌟🌟🌟 核心修改点：播放按钮逻辑 🌟🌟🌟
                   SlidableAction(
                     onPressed: (ctx) async {
                       final tmdbData = _tmdbCache[hash];
@@ -528,7 +528,13 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         return;
                       }
                       Utils.showToast("正在获取播放流...");
-                      String? itemId = await ApiService.checkMovieInEmby(tmdbData['id'].toString());
+
+                      // 🚀 传入 title 进行双重保障搜索
+                      String? itemId = await ApiService.checkMovieInEmby(
+                        tmdbData['id'].toString(),
+                        title: tmdbData['title'] // 👈 新增兜底：用片名搜
+                      );
+
                       if (itemId != null) {
                         String? streamUrl = await ApiService.getEmbyStreamUrl(itemId);
                         if (streamUrl != null) {
@@ -547,7 +553,9 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                           Utils.showToast("解析播放流失败");
                         }
                       } else {
-                        Utils.showToast("Emby 中暂未找到该资源，请等待刮削");
+                        // 🚀 终极体验优化：没找到就自动发刮削指令，并提示用户
+                        Utils.showToast("库中未找到，已发指令让 Emby 刷新硬盘，请稍候再试");
+                        EmbyService.processAndRefresh(t['name'] ?? '');
                       }
                     },
                     backgroundColor: CupertinoColors.activeBlue,
@@ -572,6 +580,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
+  // --- UI 构建方法保持不变，这里省略展示，全部原封不动 ---
   Widget _buildTorrentCard(dynamic t, bool isDark) {
     final double progress = (t['progress'] ?? 0.0).toDouble();
     final String stateRaw = t['state'] ?? 'unknown';
@@ -579,7 +588,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     final int upSpeed = t['upspeed'] ?? 0;
     final int eta = t['eta'] ?? 8640000;
     final String hash = t['hash'] ?? '';
-    
+
     final String rawName = t['name'] ?? '';
     final int totalSize = t['size'] ?? 0;
 
@@ -616,25 +625,22 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               width: 76,
               height: 114,
               child: Stack(
-                clipBehavior: Clip.none, // 🌟 关键：允许底层光晕溢出盒子！
+                clipBehavior: Clip.none,
                 children: [
-                  // 🌟 1. 环境光晕层 (Ambient Glow)
-                  // 彻底抛弃 BackdropFilter，改用极其安全的 ImageFiltered
                   Positioned.fill(
                     child: Transform.scale(
-                      scale: 1.2, // 放大约1.2倍，让颜色溢出到周围
+                      scale: 1.2,
                       child: ImageFiltered(
                         imageFilter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                         child: Container(
                           foregroundDecoration: BoxDecoration(
-                            // 加一层半透明遮罩，防止光晕过亮刺眼
                             color: isDark ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.2),
                           ),
                           child: Image.network(
                             posterUrl,
                             fit: BoxFit.cover,
                             headers: const {
-                              "Referer": "https://javbee.co/", 
+                              "Referer": "https://javbee.co/",
                               "User-Agent": "Mozilla/5.0",
                             },
                           ),
@@ -642,8 +648,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       ),
                     ),
                   ),
-                  
-                  // 2. 海报底部物理阴影
+
                   Positioned(
                     bottom: 0,
                     left: 6,
@@ -654,9 +659,9 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         borderRadius: BorderRadius.circular(10),
                         boxShadow: [
                           BoxShadow(
-                            color: isDark 
-                                ? Colors.black.withOpacity(0.5) 
-                                : Colors.black.withOpacity(0.3), 
+                            color: isDark
+                                ? Colors.black.withOpacity(0.5)
+                                : Colors.black.withOpacity(0.3),
                             blurRadius: 15,
                             spreadRadius: 2,
                             offset: const Offset(0, 8),
@@ -666,7 +671,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     ),
                   ),
 
-                  // 3. 核心清晰海报层
                   Positioned.fill(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
@@ -674,7 +678,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         posterUrl,
                         fit: BoxFit.cover,
                         headers: const {
-                          "Referer": "https://javbee.co/", 
+                          "Referer": "https://javbee.co/",
                           "User-Agent": "Mozilla/5.0",
                         },
                         errorBuilder: (context, error, stackTrace) => Container(
@@ -692,9 +696,9 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: 14), // 留出一点空间给溢出的光晕
+            const SizedBox(width: 14),
           ],
-          
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -729,7 +733,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     ),
                   ],
                 ),
-                
+
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Wrap(
@@ -742,7 +746,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                           "${tmdbData['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData['vote_average']}",
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
-                      
+
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                         decoration: BoxDecoration(
@@ -751,7 +755,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         ),
                         child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
                       ),
-                      
+
                       if (is4K)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -776,7 +780,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 ),
 
                 const SizedBox(height: 12),
-                
+
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -850,7 +854,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 }
 
-// --- 筛选面板 (FilterSheet) ---
+// --- FilterSheet ---
 class FilterSheet extends StatefulWidget {
   final String currentStatus;
   final String currentSort;
@@ -951,9 +955,9 @@ class _FilterSheetState extends State<FilterSheet> {
                 child: Text(
                   "筛选与排序",
                   style: TextStyle(
-                    fontWeight: FontWeight.bold, 
+                    fontWeight: FontWeight.bold,
                     fontSize: 17,
-                    color: isDark ? Colors.white : Colors.black, 
+                    color: isDark ? Colors.white : Colors.black,
                   ),
                 ),
               ),
@@ -983,7 +987,7 @@ class _FilterSheetState extends State<FilterSheet> {
               Expanded(
                 child: _isLoading
                     ? const Center(child: CupertinoActivityIndicator())
-                    : _buildList(isDark), 
+                    : _buildList(isDark),
               ),
               SafeArea(
                 child: Padding(

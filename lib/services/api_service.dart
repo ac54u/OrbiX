@@ -300,7 +300,7 @@ class ApiService {
       final u = await _url();
       if (u == null) return "未连接到服务器";
       final opts = await _getOptions();
-      
+
       final body = 'hashes=$hash&location=${Uri.encodeComponent(location)}';
 
       final r = await _dio.post(
@@ -308,7 +308,7 @@ class ApiService {
         data: body,
         options: opts.copyWith(contentType: Headers.formUrlEncodedContentType),
       );
-      
+
       if (r.statusCode == 200) return null;
       return "HTTP ${r.statusCode}";
     } catch (e) {
@@ -465,7 +465,7 @@ class ApiService {
         'https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt',
         options: Options(receiveTimeout: const Duration(seconds: 5)),
       );
-      
+
       if (response.statusCode == 200) {
         List<String> trackers = response.data
             .toString()
@@ -478,7 +478,7 @@ class ApiService {
     } catch (e) {
       debugPrint("获取 Tracker 失败: $e");
     }
-    return []; 
+    return [];
   }
 
   // 🌟 2. 智能注入 Tracker 到 qBittorrent 任务 (已修复请求逻辑)
@@ -490,20 +490,20 @@ class ApiService {
 
     Utils.showToast("正在请求全球最新 Tracker...");
     List<String> bestTrackers = await fetchBestTrackers();
-    
+
     if (bestTrackers.isEmpty) {
       Utils.showToast("❌ 网络异常，获取 Tracker 失败");
       return false;
     }
 
-    _ensureInit(); 
+    _ensureInit();
     try {
       final u = await _url();
       if (u == null) return false;
       final opts = await _getOptions(); // 🌟 必须获取 Cookie，否则 qB 会报 403
 
       final trackerString = bestTrackers.join('\n');
-      
+
       // 🌟 修复 _qbDio 未定义，并使用标准表单数据格式提交
       final response = await _dio.post(
         '$u/api/v2/torrents/addTrackers',
@@ -605,7 +605,10 @@ class ApiService {
     }
   }
 
-  static Future<String?> checkMovieInEmby(String tmdbId) async {
+// ==========================================
+  // 🌟 终极修复：Emby 双重搜索机制
+  // ==========================================
+  static Future<String?> checkMovieInEmby(String tmdbId, {String? title}) async {
     _ensureInit();
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('emby_url') ?? '';
@@ -616,23 +619,36 @@ class ApiService {
     final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
 
     try {
-      final response = await _dio.get(
+      // 🚀 尝试 1：通过 TMDB ID 精准搜索（已去掉 Movie 限制，完美兼容电视剧/动漫！）
+      var response = await _dio.get(
         '$cleanUrl/emby/Items',
         queryParameters: {
           'AnyProviderIdEquals': tmdbId,
           'Recursive': 'true',
-          'IncludeItemTypes': 'Movie',
           'api_key': key,
         }
       );
-      if (response.statusCode == 200) {
-        final data = response.data;
-        if (data['TotalRecordCount'] != null && data['TotalRecordCount'] > 0) {
-          return data['Items'][0]['Id'].toString();
+
+      if (response.statusCode == 200 && response.data['TotalRecordCount'] > 0) {
+        return response.data['Items'][0]['Id'].toString();
+      }
+
+      // 🚀 尝试 2：如果 ID 没搜到（Emby可能用了豆瓣/IMDB刮削），自动降级为“片名模糊搜索”！
+      if (title != null && title.isNotEmpty) {
+        response = await _dio.get(
+          '$cleanUrl/emby/Items',
+          queryParameters: {
+            'SearchTerm': title,
+            'Recursive': 'true',
+            'api_key': key,
+          }
+        );
+        if (response.statusCode == 200 && response.data['TotalRecordCount'] > 0) {
+          return response.data['Items'][0]['Id'].toString();
         }
       }
     } catch (e) {
-      print("Check Emby error: $e");
+      debugPrint("Emby 搜索异常: $e");
     }
     return null;
   }
@@ -747,7 +763,7 @@ class ApiService {
         options: Options(headers: {'X-Api-Key': key}),
       );
       final languageResp = await _dio.get(
-        '$url/api/v3/languageprofile', 
+        '$url/api/v3/languageprofile',
         options: Options(headers: {'X-Api-Key': key}),
       );
 
@@ -824,28 +840,28 @@ class ApiService {
       return false;
     }
   }
-  
+
   /// 3. (辅助) 将电影加入 Radarr 库以解锁 Interactive Search
   static Future<int?> ensureMovieInRadarr(Map<String, dynamic> movieData) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('radarr_url');
     final key = p.getString('radarr_key');
-    
+
     try {
       final checkResp = await _dio.get(
         '$url/api/v3/movie',
         queryParameters: {'tmdbId': movieData['tmdbId']},
         options: Options(headers: {'X-Api-Key': key}),
       );
-      
+
       if ((checkResp.data as List).isNotEmpty) {
         return checkResp.data[0]['id'];
       }
-      
+
       // 不存在则添加，拿到 Radarr 内部的 movieId (这里我们不让它自动搜种子)
       final tempMovieData = Map<String, dynamic>.from(movieData);
       tempMovieData['addOptions'] = {'searchForMovie': false}; // 🌟 覆盖默认配置，防止全自动抢跑
-      
+
       bool added = await addMovieToRadarr(tempMovieData);
       if (added) {
         final recheck = await _dio.get(
@@ -874,15 +890,15 @@ class ApiService {
         'https://api.github.com/repos/ac54u/OrbiX/releases/latest',
         options: Options(receiveTimeout: const Duration(seconds: 5)),
       );
-      
+
       if (response.statusCode == 200) {
         String latestTag = response.data['tag_name']?.toString().replaceAll('v', '') ?? '';
         String current = currentVersion.replaceAll('v', '');
-        
+
         if (_isNewerVersion(latestTag, current)) {
           String downloadUrl = response.data['html_url'];
           String ipaUrl = '';
-          
+
           // 智能提取 .ipa 格式的资源，用于巨魔直装
           if (response.data['assets'] != null) {
             for (var asset in response.data['assets']) {
@@ -892,7 +908,7 @@ class ApiService {
               }
             }
           }
-          
+
           return {
             'hasUpdate': true,
             'version': latestTag,
