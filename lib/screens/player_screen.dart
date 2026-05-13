@@ -51,7 +51,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // 强制横屏，沉浸式体验
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
-      SystemOrientation.landscapeRight,
+      DeviceOrientation.landscapeRight, // 统一改成 DeviceOrientation
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
