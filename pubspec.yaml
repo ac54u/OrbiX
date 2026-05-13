@@ -28,6 +28,10 @@ dependencies:
   # 👉 直接在这里加上 shimmer：
   shimmer: ^3.0.0
 
+  # 🌟 为巨魔内购更新方案新增的插件
+  path_provider: ^2.1.2
+  share_plus: ^7.2.1
+
   # 功能组件
   fluttertoast: ^8.2.2
   google_fonts: ^6.1.0
@@ -39,6 +43,7 @@ dependencies:
   flutter_local_notifications: ^18.0.0
   quick_actions: ^1.0.7
   url_launcher: ^6.3.2
+  package_info_plus: ^8.0.0 # 顺便检查一下，之前代码里用到了包信息获取，如果没有也顺手补上
 
 dev_dependencies:
   flutter_test:
