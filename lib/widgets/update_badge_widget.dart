@@ -67,15 +67,22 @@ class _UpdateBadgeWidgetState extends State<UpdateBadgeWidget> {
               
               // 🚀 核心：通过 URL Scheme 直接唤醒 TrollStore 下载并覆盖安装
               if (ipaUrl.isNotEmpty) {
-                // apple-magnifier 是巨魔伪装放大镜的专属 URL Scheme
-                final trollStoreUrl = Uri.parse('apple-magnifier://install?url=$ipaUrl');
-                if (await canLaunchUrl(trollStoreUrl)) {
-                  await launchUrl(trollStoreUrl, mode: LaunchMode.externalApplication);
-                  return;
+                // 优先尝试唤醒注入了巨魔助手的“提示(tips)”，其次尝试唤醒巨魔本体
+                List<String> trollSchemes = [
+                  'tips://install?url=$ipaUrl',
+                  'trollstore://install?url=$ipaUrl'
+                ];
+
+                for (String scheme in trollSchemes) {
+                  final trollUrl = Uri.parse(scheme);
+                  if (await canLaunchUrl(trollUrl)) {
+                    await launchUrl(trollUrl, mode: LaunchMode.externalApplication);
+                    return; // 成功唤醒，直接返回，不再执行网页跳转
+                  }
                 }
               }
               
-              // 备用方案：如果没有巨魔环境或未上传 ipa，则跳转浏览器打开 GitHub 发布页
+              // 备用方案：如果没有巨魔环境或唤醒失败，则跳转浏览器打开网页
               final webUrl = Uri.parse(htmlUrl);
               if (await canLaunchUrl(webUrl)) {
                 await launchUrl(webUrl, mode: LaunchMode.externalApplication);
