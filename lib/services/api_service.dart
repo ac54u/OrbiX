@@ -8,6 +8,7 @@ import '../core/constants.dart';
 import '../core/utils.dart';
 import 'server_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart'; // 🌟 解决 debugPrint 找不到的问题
 
 class ApiService {
   static final Dio _dio = Dio();
@@ -460,14 +461,12 @@ class ApiService {
   static Future<List<String>> fetchBestTrackers() async {
     try {
       final dio = Dio();
-      // 这里使用的是 ngosang 维护的每日更新 tracker 列表（best 级别）
       final response = await dio.get(
         'https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt',
         options: Options(receiveTimeout: const Duration(seconds: 5)),
       );
       
       if (response.statusCode == 200) {
-        // 按行分割，过滤掉空行
         List<String> trackers = response.data
             .toString()
             .split('\n')
@@ -479,12 +478,10 @@ class ApiService {
     } catch (e) {
       debugPrint("获取 Tracker 失败: $e");
     }
-    return []; // 如果失败，返回空列表
+    return []; 
   }
 
-  // 🌟 2. 智能注入 Tracker 到 qBittorrent 任务
-  // hash: qB 任务的哈希值
-  // isPrivate: 必须传入该任务是否为 PT 种子！
+  // 🌟 2. 智能注入 Tracker 到 qBittorrent 任务 (已修复请求逻辑)
   static Future<bool> injectTrackers(String hash, bool isPrivate) async {
     if (isPrivate) {
       Utils.showToast("⚠️ 保护机制触发：禁止给 PT 种子添加 Tracker！");
@@ -499,18 +496,19 @@ class ApiService {
       return false;
     }
 
+    _ensureInit(); 
     try {
-      // 假设你已经有了 qB 的 dio 实例 (_qbDio) 并且 Cookie 处于登录状态
-      // qB API 要求多个 tracker 之间用换行符 \n 分隔
+      final u = await _url();
+      if (u == null) return false;
+      final opts = await _getOptions(); // 🌟 必须获取 Cookie，否则 qB 会报 403
+
       final trackerString = bestTrackers.join('\n');
       
-      final response = await _qbDio.post(
-        '/api/v2/torrents/addTrackers',
-        data: {
-          'hash': hash,
-          'urls': trackerString,
-        },
-        options: Options(
+      // 🌟 修复 _qbDio 未定义，并使用标准表单数据格式提交
+      final response = await _dio.post(
+        '$u/api/v2/torrents/addTrackers',
+        data: 'hash=$hash&urls=${Uri.encodeComponent(trackerString)}',
+        options: opts.copyWith(
           contentType: Headers.formUrlEncodedContentType,
         ),
       );
@@ -525,7 +523,7 @@ class ApiService {
     }
     return false;
   }
-  
+
   static Future<List<dynamic>> searchProwlarr(String query) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('prowlarr_url');
