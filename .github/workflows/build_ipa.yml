@@ -31,6 +31,22 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
+      # 👇 新增：缓存 CocoaPods，大幅减少从 GitHub 下载配置文件的次数，根治 429 报错
+      - name: Cache CocoaPods
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cocoapods/repos
+            ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      # 👇 新增：手动更新 pod repo，确保网络抓取使用的是最新且最稳的连接
+      - name: Update Pods Repo
+        run: pod repo update
+        working-directory: ios
+
       - name: Build iOS App (No Codesign)
         run: |
           flutter build ios --release --no-codesign
