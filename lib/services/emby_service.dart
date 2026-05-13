@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/utils.dart';
+import 'package:flutter/foundation.dart'; // 🌟 加上这一行来支持 debugPrint
 
 class EmbyService {
   /// 1. 触发后端进行硬链接整理并刷新 Emby 库
