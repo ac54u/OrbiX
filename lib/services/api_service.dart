@@ -637,6 +637,19 @@ class ApiService {
     return null;
   }
 
+  // 🌟 新增：获取 Emby 真实流媒体播放地址，供应用内 media_kit 播放器使用
+  static Future<String?> getEmbyStreamUrl(String itemId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString('emby_url') ?? '';
+    final key = prefs.getString('emby_api_key') ?? '';
+
+    if (url.isEmpty || key.isEmpty) return null;
+    final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+
+    // static=true 告诉 Emby 尽量原画直连（因为我们的播放器足够强大，不需要转码）
+    return '$cleanUrl/emby/Videos/$itemId/stream?static=true&api_key=$key';
+  }
+
   static Future<void> playInEmby(String itemId) async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('emby_url') ?? '';
@@ -771,7 +784,7 @@ class ApiService {
   }
 
   // ==========================================
-  // --- 🌟 Radarr 交互式搜索联动 API (新增) ---
+  // --- 🌟 Radarr 交互式搜索联动 API ---
   // ==========================================
 
   /// 1. 获取特定电影的所有可用种子资源 (Interactive Search)
