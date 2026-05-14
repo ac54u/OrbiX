@@ -887,8 +887,8 @@ class ApiService {
     return null;
   }
 
-// 🌟 提交 YouTube 下载任务
-  static Future<bool> addYoutubeTask(String url) async {
+// 🌟 提交 YouTube 下载任务 (升级版：捕获真实报错)
+  static Future<String?> addYoutubeTask(String url) async {
     final prefs = await SharedPreferences.getInstance();
     final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
     final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
@@ -898,13 +898,20 @@ class ApiService {
         '$baseUrl/api/yt/add',
         data: {
           'url': url,
-          'save_dir': '/data/media/YouTube', // 🌟 专属存放文件夹
+          'save_dir': '/data/media/YouTube',
         },
+        options: Options(validateStatus: (status) => true), // 接收所有状态码，不直接抛异常
       );
-      return r.statusCode == 200;
+
+      if (r.statusCode == 200) {
+        return null; // 成功返回 null
+      } else {
+        // 如果后端报错，把后端的报错信息提取出来
+        return r.data['msg']?.toString() ?? "服务器返回错误: ${r.statusCode}";
+      }
     } catch (e) {
       debugPrint("YouTube下载请求失败: $e");
-      return false;
+      return "网络异常: $e";
     }
   }
 

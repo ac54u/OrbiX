@@ -74,7 +74,15 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
       // 🌟 核心智能分流逻辑
       if (url.contains('youtube.com') || url.contains('youtu.be')) {
         Utils.showToast("正在解析 YouTube 视频...");
-        success = await ApiService.addYoutubeTask(url);
+        final errorMsg = await ApiService.addYoutubeTask(url);
+        if (errorMsg == null) {
+          success = true;
+        } else {
+          // ⚠️ 把真实的报错弹出来给大哥看
+          Utils.showToast("解析失败: $errorMsg", duration: 5);
+          setState(() => _isSubmitting = false);
+          return;
+        }
       } else {
         Utils.showToast("正在提交下载任务...");
         success = await ApiService.addTorrent(
