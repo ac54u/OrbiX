@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import '../../core/utils.dart';
 import '../../core/constants.dart';
+// 🌟 引入你的超级播放器 (请确保路径和你的实际项目匹配，比如 import '../player/player_screen.dart')
+import '../../torrent/player_screen.dart'; // <--- 根据你的实际目录结构调整这里
 
 class AddTorrentSheet extends StatefulWidget {
   const AddTorrentSheet({super.key});
@@ -45,7 +47,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
   }
 
-  // 提交添加请求 (🌟 已加入 YouTube 智能分流)
+  // 提交添加请求 (🌟 已加入 YouTube 智能拦截跳转)
   Future<void> _submit() async {
     setState(() => _isSubmitting = true);
 
@@ -71,19 +73,25 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
          return;
       }
 
-      // 🌟 核心智能分流逻辑
+      // 🌟🌟 核心拦截逻辑：发现 YouTube，绝对不走后端！直接弹播放器！
       if (url.contains('youtube.com') || url.contains('youtu.be')) {
-        Utils.showToast("正在解析 YouTube 视频...");
-        final errorMsg = await ApiService.addYoutubeTask(url);
-        if (errorMsg == null) {
-          success = true;
-        } else {
-          // ⚠️ 把真实的报错弹出来给大哥看
-          Utils.showToast("解析失败: $errorMsg");
-          setState(() => _isSubmitting = false);
-          return;
-        }
-      } else {
+        // 1. 关闭当前的“添加任务”弹窗
+        Navigator.pop(context);
+
+        // 2. 直接推入你的超级播放器进行手机端直解播放
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PlayerScreen(
+              streamUrl: url,
+              title: 'YouTube 视频',
+            ),
+          ),
+        );
+        return; // 🛑 极其关键：直接 return，彻底切断与后端的联系
+      }
+      // 🌟 其他正常的磁力链接和种子，照常发给服务器
+      else {
         Utils.showToast("正在提交下载任务...");
         success = await ApiService.addTorrent(
           url,
@@ -111,10 +119,11 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
 
     setState(() => _isSubmitting = false);
 
+    // 只有走后端的 BT 任务才会执行下面的成功提示
     if (success) {
       HapticFeedback.heavyImpact();
       String msg = "添加成功";
-      if (defaultPath != null && !(_urlController.text.contains('youtube.com') || _urlController.text.contains('youtu.be'))) {
+      if (defaultPath != null) {
         final folderName = defaultPath.split('/').last;
         msg += " (存入: $folderName)";
       }
@@ -307,7 +316,6 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     );
   }
 
-  // ✅ 修复：将 border 改为 decoration: null
   Widget _buildInputRow(String label, String placeholder, TextEditingController controller, {required bool isLast, required Color textColor}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -324,7 +332,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
             child: CupertinoTextField(
               controller: controller,
               placeholder: placeholder,
-              decoration: null, // ✅ 这里改好了，去掉了边框
+              decoration: null,
               textAlign: TextAlign.right,
               placeholderStyle: const TextStyle(color: Colors.grey),
               style: TextStyle(color: textColor),
