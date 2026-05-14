@@ -7,8 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import '../../core/utils.dart';
 import '../../core/constants.dart';
-// 🌟 引入你的超级播放器 (请确保路径和你的实际项目匹配，比如 import '../player/player_screen.dart')
-import '../player_screen.dart'; // <--- 根据你的实际目录结构调整这里
+import '../player_screen.dart'; // 🌟 请确保路径正确
 
 class AddTorrentSheet extends StatefulWidget {
   const AddTorrentSheet({super.key});
@@ -47,7 +46,81 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
   }
 
-  // 提交添加请求 (🌟 已加入 YouTube 智能拦截跳转)
+  // 统一的成功提示逻辑
+  void _handleSuccess(bool success, String? defaultPath, {String? customMsg}) {
+    if (success) {
+      HapticFeedback.heavyImpact();
+      String msg = customMsg ?? "添加成功";
+      if (defaultPath != null && customMsg == null) {
+        final folderName = defaultPath.split('/').last;
+        msg += " (存入: $folderName)";
+      }
+      Utils.showToast(msg);
+      if (mounted) Navigator.pop(context); // 成功后关闭弹窗
+    } else {
+      Utils.showToast(customMsg ?? "添加失败，请检查网络或链接");
+    }
+  }
+
+  // 🌟 处理 YouTube 链接的专属 ActionSheet
+  void _showYouTubeActionSheet(String url) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (BuildContext context) => CupertinoActionSheet(
+        title: const Text('检测到 YouTube 链接'),
+        message: const Text('请选择您要执行的操作'),
+        actions: <CupertinoActionSheetAction>[
+          CupertinoActionSheetAction(
+            child: const Text('▶️ 手机直接播放'),
+            onPressed: () {
+              Navigator.pop(context); // 关掉 ActionSheet
+              Navigator.pop(this.context); // 关掉当前的“添加任务”弹窗
+
+              // 推入播放器
+              Navigator.push(
+                this.context,
+                MaterialPageRoute(
+                  builder: (context) => PlayerScreen(
+                    streamUrl: url,
+                    title: 'YouTube 视频',
+                  ),
+                ),
+              );
+            },
+          ),
+          CupertinoActionSheetAction(
+            child: const Text('☁️ 下载到服务器 (最高画质)'),
+            onPressed: () async {
+              Navigator.pop(context); // 关掉 ActionSheet
+              setState(() => _isSubmitting = true);
+
+              Utils.showToast("正在提交服务器解析并下载...");
+
+              // 🌟 调用你 api_service.dart 里的全新接口
+              String? errorMsg = await ApiService.addYoutubeTask(url);
+
+              setState(() => _isSubmitting = false);
+
+              if (errorMsg == null) {
+                _handleSuccess(true, null, customMsg: "YouTube 下载已推送到服务器！");
+              } else {
+                _handleSuccess(false, null, customMsg: errorMsg);
+              }
+            },
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
+  // 提交添加请求
   Future<void> _submit() async {
     setState(() => _isSubmitting = true);
 
@@ -55,7 +128,6 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     final prefs = await SharedPreferences.getInstance();
     String? defaultPath = prefs.getString('default_path');
 
-    // 如果设置里是空的，就传 null (让 qBittorrent 使用它自己的默认配置)
     if (defaultPath != null && defaultPath.trim().isEmpty) {
       defaultPath = null;
     }
@@ -65,7 +137,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     final tags = _tagsController.text.isNotEmpty ? _tagsController.text : null;
 
     if (_groupValue == 0) {
-      // --- 添加链接 (磁力/URL/YouTube) ---
+      // --- 添加链接 ---
       final url = _urlController.text.trim();
       if (url.isEmpty) {
          Utils.showToast("请输入链接");
@@ -73,24 +145,14 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
          return;
       }
 
-      // 🌟🌟 核心拦截逻辑：发现 YouTube，绝对不走后端！直接弹播放器！
+      // 🌟🌟 核心拦截逻辑：发现 YouTube，弹出选择菜单
       if (url.contains('youtube.com') || url.contains('youtu.be')) {
-        // 1. 关闭当前的“添加任务”弹窗
-        Navigator.pop(context);
-
-        // 2. 直接推入你的超级播放器进行手机端直解播放
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PlayerScreen(
-              streamUrl: url,
-              title: 'YouTube 视频',
-            ),
-          ),
-        );
-        return; // 🛑 极其关键：直接 return，彻底切断与后端的联系
+        setState(() => _isSubmitting = false);
+        _showYouTubeActionSheet(url);
+        return;
       }
-      // 🌟 其他正常的磁力链接和种子，照常发给服务器
+
+      // 其他正常的磁力链接和种子，照常发给服务器 qBittorrent
       else {
         Utils.showToast("正在提交下载任务...");
         success = await ApiService.addTorrent(
@@ -99,6 +161,8 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
           category: cat,
           tags: tags,
         );
+        setState(() => _isSubmitting = false);
+        _handleSuccess(success, defaultPath);
       }
 
     } else {
@@ -115,23 +179,8 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
         category: cat,
         tags: tags,
       );
-    }
-
-    setState(() => _isSubmitting = false);
-
-    // 只有走后端的 BT 任务才会执行下面的成功提示
-    if (success) {
-      HapticFeedback.heavyImpact();
-      String msg = "添加成功";
-      if (defaultPath != null) {
-        final folderName = defaultPath.split('/').last;
-        msg += " (存入: $folderName)";
-      }
-
-      Utils.showToast(msg);
-      if (mounted) Navigator.pop(context);
-    } else {
-      Utils.showToast("添加失败，请检查网络或链接");
+      setState(() => _isSubmitting = false);
+      _handleSuccess(success, defaultPath);
     }
   }
 

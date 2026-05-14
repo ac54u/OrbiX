@@ -238,12 +238,25 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 
+  // 🌟🌟 优化：加入进度检测锁
   Future<void> _handlePlay(dynamic t) async {
     final String rawName = t['name'] ?? '';
     final String hash = t['hash'] ?? '';
     final bool isYt = t['is_yt'] == true;
+    final double progress = (t['progress'] ?? 0.0).toDouble();
 
     if (rawName.isEmpty) return;
+
+    // 🚀 核心拦截：YouTube 音视频分离机制要求必须 100% 下载合并后才能播放
+    if (isYt && progress < 1.0 && t['state'] != 'completed') {
+      HapticFeedback.heavyImpact();
+      Utils.showToast("⏳ YouTube 任务需等待音视频完全合并 (进度 100%) 后方可播放");
+      return;
+    } else if (!isYt && progress < 0.01) {
+      // BT 任务至少需要 1% 的数据块才能尝试边下边播
+      Utils.showToast("缓冲中，请等待下载进度上升后再试");
+      return;
+    }
 
     final tmdbData = _tmdbCache[hash];
     final String displayTitle = isYt
@@ -459,7 +472,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               }
             },
           ),
-          // 🌟 新增：DeepSeek AI 同声传译按钮
+          // 🌟 DeepSeek AI 同声传译按钮
           CupertinoContextMenuAction(
             trailingIcon: CupertinoIcons.wand_stars,
             child: const Text("DeepSeek AI 翻译"),
@@ -540,7 +553,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
           },
           onTap: () {
             if (isYt) {
-              _handlePlay(t); // YouTube 直接播放
+              _handlePlay(t); // YouTube 直接播放 (现在已有安全防护锁)
             } else {
               Navigator.of(context).push(
                 CupertinoPageRoute(
@@ -627,7 +640,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🌟 加入了 posterUrl.isNotEmpty 防御！
           if (hasPoster && posterUrl.isNotEmpty) ...[
             SizedBox(
               width: 76,
@@ -892,7 +904,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 }
 
-// --- FilterSheet ---
+// --- FilterSheet (无变动，保持不变) ---
 class FilterSheet extends StatefulWidget {
   final String currentStatus;
   final String currentSort;

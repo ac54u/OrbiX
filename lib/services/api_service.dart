@@ -355,7 +355,7 @@ class ApiService {
       if (r.data is String) {
         try { return jsonDecode(r.data) as Map<String, dynamic>; } catch (_) { return {}; }
       }
-      return r.data is Map ? r.data : {};
+      return r.data is Map ? r.data as Map<String, dynamic> : {};
     } catch (e) {
       return {};
     }
