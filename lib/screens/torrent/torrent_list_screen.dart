@@ -248,7 +248,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     final tmdbData = _tmdbCache[hash];
     final String displayTitle = isYt
         ? rawName
-        : ((tmdbData != null && tmdbData['status'] == 'success') ? (tmdbData['title'] ?? rawName) : rawName);
+        : ((tmdbData != null && tmdbData['status'] == 'success') ? (tmdbData?['title'] ?? rawName) : rawName);
 
     Utils.showToast("⚡ 正在建立物理直连通道...");
 
@@ -591,11 +591,11 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       quality = '';
     }
 
-    // 🌟 海报获取逻辑：如果是 YouTube，直接取 t['poster']，否则取 _tmdbCache
+    // 🌟 海报获取逻辑：安全提取 tmdbData
     final tmdbData = _tmdbCache[hash];
     final String ytPoster = t['poster'] ?? '';
     final bool hasPoster = isYt ? ytPoster.isNotEmpty : (tmdbData != null && tmdbData['status'] == 'success');
-    final String posterUrl = isYt ? ytPoster : (hasPoster ? tmdbData['poster_url'] : '');
+    final String posterUrl = isYt ? ytPoster : (hasPoster ? (tmdbData?['poster_url'] ?? '') : '');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -680,7 +680,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     ),
                   ),
 
-                  // 🌟 如果是 YouTube 任务，在封面上加一个小小的播放图标遮罩，增加辨识度
                   if (isYt)
                     const Positioned.fill(
                       child: Center(
@@ -702,7 +701,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        hasPoster && !isYt ? tmdbData['title'] : rawName,
+                        hasPoster && !isYt ? (tmdbData?['title'] ?? rawName) : rawName,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -735,7 +734,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      // 🌟 YouTube 专属红色徽章
                       if (isYt)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -755,11 +753,11 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
 
                       if (hasPoster && !isYt)
                         Text(
-                          "${tmdbData['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData['vote_average']}",
+                          "${tmdbData?['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData?['vote_average'] ?? ''}",
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
 
-                      if (!isYt) // YT 体积通常由后端计算，有时候不准，可选择隐藏或保留
+                      if (!isYt)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
@@ -769,7 +767,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                           child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
                         ),
 
-                      if (is4K || isYt) // YT 默认我们下的最高画质，标个 4K 装逼
+                      if (is4K || isYt)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
@@ -813,7 +811,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   child: LinearProgressIndicator(
                     value: progress,
                     backgroundColor: isDark ? Colors.grey[800] : const Color(0xFFF2F2F7),
-                    // 🌟 如果是 YT，进度条变成专属的红色！
                     color: isYt && progress < 1.0 ? Colors.red : stateColor,
                     minHeight: 4,
                   ),
