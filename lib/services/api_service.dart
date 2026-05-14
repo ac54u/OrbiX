@@ -919,72 +919,79 @@ class ApiService {
   }
 
 // ==========================================
-  // 🌟 终极版：白嫖 Cobalt 官方集群提取直链，并推送 qBittorrent 下载
+  // 🌟 终极版：分布式高可用 Cobalt 节点轮询嗅探，彻底绕过封锁
   // ==========================================
   static Future<String?> addYoutubeTask(String url) async {
-    try {
-      // 🌟 绝杀方案：抛弃本地被封 IP 的引擎，使用 Cobalt 官方全球公共解析集群
-      final cobaltUrl = 'https://api.cobalt.tools/';
+    // 🌟 顶级福利：精选的全球 Cobalt 野生公益节点池
+    // 只要有一个没被 YouTube 封锁，就能瞬间拿到直链！
+    final List<String> cobaltNodes = [
+      'https://co.eepy.moe/',
+      'https://cobalt.owo.network/',
+      'https://api.cobalt.bepass.org/',
+      'https://cobalt.cappuch.dev/',
+      'https://cobalt.kwiatektv.me/',
+      'https://api.cobalt.tools/' // 官方放最后垫底（虽然 YT 废了，但保不齐以后恢复）
+    ];
 
-      // 强制使用 jsonEncode，只传 url，保持极致纯净
-      final requestBody = jsonEncode({
-        'url': url
-      });
+    final requestBody = jsonEncode({
+      'url': url
+    });
 
-      final r = await _dio.post(
-        cobaltUrl,
-        data: requestBody,
-        options: Options(
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            // 🌟 完美伪装成官方网页的请求，防止官方接口拦截我们
-            'Origin': 'https://cobalt.tools',
-            'Referer': 'https://cobalt.tools/',
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'
-          },
-          validateStatus: (status) => true,
-        ),
-      );
+    for (String nodeUrl in cobaltNodes) {
+      try {
+        debugPrint("🔍 正在嗅探野生节点: $nodeUrl");
+        final r = await _dio.post(
+          nodeUrl,
+          data: requestBody,
+          options: Options(
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15',
+            },
+            sendTimeout: const Duration(seconds: 8), // 设定超时，死了就赶紧切下一个
+            receiveTimeout: const Duration(seconds: 15),
+            validateStatus: (status) => true,
+          ),
+        );
 
-      debugPrint("官方 Cobalt 返回状态码: ${r.statusCode}");
-      debugPrint("官方 Cobalt 返回数据: ${r.data}");
+        if (r.statusCode == 200 && r.data != null) {
+          final data = r.data is String ? jsonDecode(r.data) : r.data;
 
-      if (r.statusCode == 200 && r.data != null) {
-        final data = r.data is String ? jsonDecode(r.data) : r.data;
+          // 如果这个节点报 error，说明它也被 YouTube 封了，直接跳过试下一个节点
+          if (data['status'] == 'error' || data['status'] == 'stream') {
+             debugPrint("⚠️ 节点 $nodeUrl 被风控，切换下一个...");
+             continue;
+          }
 
-        if (data['status'] == 'error' || data['status'] == 'stream') {
-           return "官方引擎拦截或不支持: ${data['text'] ?? '未知错误'}";
-        }
+          final downloadUrl = data['url'];
 
-        final downloadUrl = data['url'];
+          if (downloadUrl != null && downloadUrl.toString().isNotEmpty) {
+            debugPrint("🎯 暴击！成功从节点 $nodeUrl 抢到直链！");
 
-        if (downloadUrl != null && downloadUrl.toString().isNotEmpty) {
-          // 🚀 最爽的一步：拿到官方给的直链，当成普通 http 任务丢给你的服务器 qBittorrent！
-          bool success = await addTorrent(
-            downloadUrl,
-            savePath: '/data/media/YouTube',
-            category: 'YouTube'
-          );
+            // 拿到直链，下发给 qBittorrent
+            bool success = await addTorrent(
+              downloadUrl,
+              savePath: '/data/media/YouTube',
+              category: 'YouTube'
+            );
 
-          if (success) {
-            return null; // 完美推送到 qB，去列表里等下载完成直接播放吧！
-          } else {
-            return "解析成功，但推送给 qBittorrent 下载失败";
+            if (success) {
+              return null; // 完美推送到 qB，任务结束！
+            } else {
+              return "虽然解析成功，但推送给 qBittorrent 下载失败";
+            }
           }
         }
-        return "未能从官方引擎获取有效下载链接";
-      } else {
-        String errMsg = "HTTP ${r.statusCode}";
-        if (r.data is Map && r.data['error'] != null && r.data['error']['code'] != null) {
-          errMsg += " -> ${r.data['error']['code']}";
-        }
-        return "官方引擎请求失败: $errMsg";
+      } catch (e) {
+        // 网络超时或节点宕机，安静地跳过，继续轮询
+        debugPrint("❌ 节点 $nodeUrl 宕机，跳过。");
+        continue;
       }
-    } catch (e) {
-      debugPrint("官方 Cobalt 请求异常: $e");
-      return "网络连接失败，请检查手机网络";
     }
+
+    // 如果把所有节点都试了一遍全都不行（极小概率）
+    return "解析失败：所有公共节点均被 YouTube 临时风控，请稍后再试或使用手机直播。";
   }
 
   // 🌟 备用降级方案：应对极个别特殊版本的 Cobalt API 路由
