@@ -8,7 +8,7 @@ import '../../services/api_service.dart';
 import '../../core/utils.dart';
 import '../../core/constants.dart';
 // 🌟 引入你的超级播放器 (请确保路径和你的实际项目匹配，比如 import '../player/player_screen.dart')
-import '../../torrent/player_screen.dart'; // <--- 根据你的实际目录结构调整这里
+import '../player_screen.dart'; // <--- 根据你的实际目录结构调整这里
 
 class AddTorrentSheet extends StatefulWidget {
   const AddTorrentSheet({super.key});
