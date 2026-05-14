@@ -51,7 +51,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // 强制横屏，沉浸式体验
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight, // 统一改成 DeviceOrientation
+      DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
@@ -195,7 +195,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.65),
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
+                  boxShadow: const [
                     BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 2)
                   ],
                 ),
@@ -291,29 +291,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // --- UI 组件封装 ---
 
+  // 🌟 升级：大厂级智能缓冲状态栏
   Widget _buildCenterPlayButton() {
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: () {
-        HapticFeedback.lightImpact();
-        player.playOrPause();
-        _startHideTimer();
+    return StreamBuilder<bool>(
+      stream: player.stream.buffering,
+      initialData: player.state.buffering,
+      builder: (context, snapshot) {
+        final isBuffering = snapshot.data ?? true; // 默认初始状态为正在缓冲
+
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: isBuffering
+              ? ClipRRect(
+                  key: const ValueKey('buffering'),
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white10, width: 1),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          CupertinoActivityIndicator(radius: 16, color: Colors.white),
+                          SizedBox(height: 14),
+                          Text(
+                            "正在缓冲...",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : CupertinoButton(
+                  key: const ValueKey('play_btn'),
+                  padding: EdgeInsets.zero,
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    player.playOrPause();
+                    _startHideTimer();
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(18),
+                    child: StreamBuilder<bool>(
+                      stream: player.stream.playing,
+                      initialData: player.state.playing,
+                      builder: (context, playing) => Icon(
+                        playing.data == true ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                        color: Colors.white,
+                        size: 52,
+                      ),
+                    ),
+                  ),
+                ),
+        );
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
-          shape: BoxShape.circle,
-        ),
-        padding: const EdgeInsets.all(18),
-        child: StreamBuilder(
-          stream: player.stream.playing,
-          builder: (context, playing) => Icon(
-            playing.data == true ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-            color: Colors.white,
-            size: 52,
-          ),
-        ),
-      ),
     );
   }
 
