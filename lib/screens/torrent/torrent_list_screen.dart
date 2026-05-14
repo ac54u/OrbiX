@@ -133,23 +133,30 @@ Future<void> _fetchTorrents() async {
     final rawYtData = await MeTubeService.getDownloads();
 
     // 🌟 3. 数据“伪装”：把 MeTube 的数据格式转换成你 UI 能看懂的字典
+    // 🌟 3. 数据“伪装”：把 MeTube 的数据格式转换成你 UI 能看懂的字典 (带容错)
     final ytData = rawYtData.map((task) {
-      // MeTube 的进度通常是字符串 "45.2"，需要转成 double 比例
-      double percent = 0.0;
-      if (task['percent'] != null) {
-        percent = (double.tryParse(task['percent'].toString()) ?? 0.0) / 100.0;
-      } else if (task['status'] == 'completed') {
-        percent = 1.0;
-      }
+      try {
+        double percent = 0.0;
+        final status = task['status'] ?? 'unknown';
 
-      return {
-        'hash': 'metube_${task['id'] ?? task['url']}', // 制造一个假 hash 供 UI 作为 Key 使用
-        'name': task['title'] ?? task['url'] ?? 'MeTube 下载任务',
-        'progress': percent,
-        'state': task['status'] == 'completed' ? 'completed' : 'downloading',
-        'is_yt': true, // 👈 完美触发你写的红色标签和播放逻辑
-      };
-    }).toList();
+        if (task['percent'] != null) {
+          percent = (double.tryParse(task['percent'].toString()) ?? 0.0) / 100.0;
+        } else if (status == 'completed') {
+          percent = 1.0;
+        }
+
+        return {
+          'hash': 'metube_${task['id'] ?? task.hashCode}', // 兼容没有 id 的情况
+          'name': task['title'] ?? task['name'] ?? task['url'] ?? '未知视频任务',
+          'progress': percent,
+          'state': status == 'completed' ? 'completed' : 'downloading',
+          'is_yt': true,
+        };
+      } catch (e) {
+        debugPrint("❌ 单个视频任务解析失败: $e");
+        return null; // 如果某个任务格式稀烂，直接丢弃，不影响整体列表
+      }
+    }).where((element) => element != null).toList(); // 过滤掉解析失败的任务
 
     // 🌟 4. 合并数据
     final List<dynamic> allData = [...btData, ...ytData];
