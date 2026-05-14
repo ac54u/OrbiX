@@ -62,7 +62,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
   }
 
-  // 🌟 处理 YouTube 链接的专属 ActionSheet
+// 🌟 处理 YouTube 链接的专属 ActionSheet
   void _showYouTubeActionSheet(String url) {
     showCupertinoModalPopup(
       context: context,
@@ -73,10 +73,9 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
           CupertinoActionSheetAction(
             child: const Text('▶️ 手机直接播放 (秒开绕风控)'),
             onPressed: () {
-              Navigator.pop(sheetContext); // 关掉 ActionSheet
-              Navigator.pop(context); // 关掉当前的“添加任务”弹窗
+              Navigator.pop(sheetContext);
+              Navigator.pop(context);
 
-              // 🚀 直接推入前端直解播放器
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -89,21 +88,23 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
             },
           ),
           CupertinoActionSheetAction(
-            child: const Text('☁️ 下载到服务器 (推给 qB 拿 4K)'),
+            // 🔧 修改了这里的文案
+            child: const Text('☁️ 下载到服务器 (推给 MeTube)'),
             onPressed: () async {
-              Navigator.pop(sheetContext); // 关掉 ActionSheet
-              setState(() => _isSubmitting = true); // 让主面板转圈圈
+              Navigator.pop(sheetContext);
+              setState(() => _isSubmitting = true);
 
-              Utils.showToast("正在呼叫 Cobalt 引擎解析...");
+              Utils.showToast("正在呼叫 MeTube 引擎解析...");
 
-              // 🌟 调用 api_service 里的全新接口，将直链推给 qBittorrent
-              String? errorMsg = await ApiService.addYoutubeTask(url);
+              // 🌟 这里的调用会触发刚才写好的 API
+              String? errorMsg = await MyTubeService.addDownloadTask(url);
 
-              if (!mounted) return; // 🛡️ 异步安全检查：防止等待期间用户关掉弹窗导致崩溃
+              if (!mounted) return;
               setState(() => _isSubmitting = false);
 
               if (errorMsg == null) {
-                _handleSuccess(true, null, customMsg: "解析成功！已推送至 qBittorrent");
+                // 成功后，视频会自动下载到你在 Docker 里映射的 /data/media/YouTube 目录
+                _handleSuccess(true, null, customMsg: "解析成功！已推送到 MeTube 后台下载");
               } else {
                 _handleSuccess(false, null, customMsg: errorMsg);
               }

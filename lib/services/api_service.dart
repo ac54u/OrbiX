@@ -918,88 +918,6 @@ class ApiService {
     return null;
   }
 
-// ==========================================
-  // 🌟 终极掀桌子方案：Piped API 分布式代理中转下载 (彻底无视 YouTube 任何风控)
-  // ==========================================
-  static Future<String?> addYoutubeTask(String url) async {
-    try {
-      // 1. 精准提取 YouTube Video ID
-      final RegExp regExp = RegExp(r'(?:v=|/)([0-9A-Za-z_-]{11}).*');
-      final match = regExp.firstMatch(url);
-      if (match == null) return "不是有效的 YouTube 链接";
-      final videoId = match.group(1);
-
-      // 2. 🌟 全球高质量 Piped 开源代理节点池
-      final List<String> pipedApis = [
-        'https://pipedapi.kavin.rocks',
-        'https://pipedapi.tokhmi.xyz',
-        'https://pipedapi.smnz.de',
-        'https://api.piped.projectsegfau.lt'
-      ];
-
-      for (String api in pipedApis) {
-        try {
-          debugPrint("🔍 正在请求 Piped 镜像节点: $api");
-          final r = await _dio.get(
-            '$api/streams/$videoId',
-            options: Options(
-              sendTimeout: const Duration(seconds: 5),
-              receiveTimeout: const Duration(seconds: 10),
-              validateStatus: (status) => true,
-            ),
-          );
-
-          if (r.statusCode == 200 && r.data != null && r.data['videoStreams'] != null) {
-            List streams = r.data['videoStreams'];
-
-            // 🌟 核心：寻找包含画面和声音（videoOnly == false）的 mp4 格式流
-            // 默认抓取 720p/1080p 合并流，因为 Piped 提供的是已经封装好的完美文件
-            var validStreams = streams.where((s) =>
-                s['format'] == 'MPEG_4' &&
-                s['videoOnly'] == false
-            ).toList();
-
-            if (validStreams.isNotEmpty) {
-              // 按照质量 (bitrate) 降序排序，拿最高清的那个
-              validStreams.sort((a, b) => (b['bitrate'] ?? 0).compareTo(a['bitrate'] ?? 0));
-
-              String proxyDownloadUrl = validStreams.first['url'];
-
-              debugPrint("🎯 绝杀！拿到 Piped 中转直链，无视 IP 绑定，准备推送 qB...");
-
-              // 🚀 将这个『中转服务器』的链接扔给 qBittorrent
-              // qB 以为这就是个普通的 http 视频文件，直接满速开拉！
-              bool success = await addTorrent(
-                proxyDownloadUrl,
-                savePath: '/data/media/YouTube',
-                category: 'YouTube'
-              );
-
-              if (success) {
-                return null; // 完美收工！
-              } else {
-                return "代理地址提取成功，但推给 qB 时连接失败";
-              }
-            }
-          }
-        } catch (e) {
-          debugPrint("节点 $api 宕机，自动切换...");
-          continue;
-        }
-      }
-
-      return "所有镜像节点均无响应，视频可能被彻底锁定。";
-    } catch (e) {
-      debugPrint("彻底崩溃: $e");
-      return "代码执行异常，请检查链接格式";
-    }
-  }
-
-  // 🌟 (已废弃/兼容保留) 获取 YouTube 任务列表
-  static Future<List<dynamic>> getYtTorrents() async {
-    return [];
-  }
-
   static Future<Map<String, dynamic>?> checkAppUpdate(String currentVersion) async {
     try {
       final dio = Dio();
@@ -1075,6 +993,51 @@ class ApiService {
     } catch (e) {
       debugPrint("翻译请求发送失败: $e");
       return false;
+    }
+  }
+}
+
+// ==========================================
+// 🌟 全新的专属 MeTube API 服务
+// ==========================================
+class MyTubeService {
+  // 你的专属 MeTube 服务器地址
+  static const String baseUrl = "http://152.53.131.108:5551";
+  static final Dio _dio = Dio();
+
+  /// 提交下载任务到 MeTube
+  /// 返回 null 表示成功，返回 String 表示错误信息
+  static Future<String?> addDownloadTask(String url) async {
+    try {
+      final response = await _dio.post(
+        "$baseUrl/add",
+        data: {
+          "url": url,
+          "quality": "best" // 默认最高画质
+        },
+        options: Options(
+          contentType: Headers.jsonContentType,
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        // Dio 自动将响应体解析为 Map
+        final data = response.data is String ? jsonDecode(response.data) : response.data;
+
+        // MeTube 添加成功通常返回 {"status": "ok"}
+        if (data != null && data['status'] == 'ok') {
+          return null; // 成功
+        } else {
+          return data['error']?.toString() ?? "MeTube 返回未知错误";
+        }
+      } else {
+        return "服务器响应异常，状态码: ${response.statusCode}";
+      }
+    } catch (e) {
+      debugPrint("MeTube 请求失败: $e");
+      return "无法连接到 MeTube，请检查服务器或网络状态";
     }
   }
 }
