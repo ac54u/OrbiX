@@ -1,59 +1,82 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
-import '../core/network/dio_client.dart'; // 使用你封装的安全网络基座
-
+// ==========================================
+// 🌟 全新的专属 MeTube API 服务
+// ==========================================
 class MyTubeService {
-  // 🌟 独立的 Dio 实例，专用于 MeTube 交互
-  static final Dio _dio = DioClient.create();
+  // 你的专属 MeTube 服务器地址
+  static const String baseUrl = "http://152.53.131.108:5551";
 
-  /// 提交 YouTube (或 B站/Twitch) 链接给服务器的 MeTube 去下载
+  // 如果你之前封装了 DioClient，这里可以换成 DioClient.create()
+  static final Dio _dio = Dio();
+
+  /// 提交下载任务到 MeTube
+  /// 返回 null 表示成功，返回 String 表示错误信息
   static Future<String?> addDownloadTask(String url) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // 动态读取配置，如果没有配，默认使用你刚刚搭建好的服务器 IP 和 5551 端口
-      final mytubeUrl = prefs.getString('mytube_url') ?? 'http://152.53.131.108:5551';
-
-      // ⚠️ MeTube 的官方 API 接口是 /add
-      final endpoint = '$mytubeUrl/add';
-
-      debugPrint("🚀 正在将任务提交给 MeTube 核心引擎: $endpoint");
-
-      final r = await _dio.post(
-        endpoint,
+      final response = await _dio.post(
+        "$baseUrl/add",
         data: {
-          'url': url,
-          'quality': 'best', // 默认拉取最高画质
+          "url": url,
+          "quality": "best" // 默认最高画质
         },
         options: Options(
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          validateStatus: (status) => true,
+          contentType: Headers.jsonContentType,
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 10),
         ),
       );
 
-      if (r.statusCode == 200) {
-        // MeTube 的特点：哪怕报错也是 200，所以必须检查 body 里的 status
-        final data = r.data is String ? jsonDecode(r.data) : r.data;
+      if (response.statusCode == 200) {
+        // Dio 自动将响应体解析为 Map
+        final data = response.data is String ? jsonDecode(response.data) : response.data;
 
+        // MeTube 添加成功通常返回 {"status": "ok"}
         if (data != null && data['status'] == 'ok') {
-          debugPrint("✅ MeTube 接收任务成功！");
-          return null; // 返回 null 代表完全成功
+          return null; // 成功
         } else {
-          String errorMsg = data['error']?.toString() ?? "未知的解析错误";
-          return "MeTube 解析失败: $errorMsg";
+          return data['error']?.toString() ?? "MeTube 返回未知错误";
         }
       } else {
-        return "服务器响应异常: HTTP ${r.statusCode}";
+        return "服务器响应异常，状态码: ${response.statusCode}";
       }
     } catch (e) {
-      debugPrint("MeTube 连接异常: $e");
-      return "无法连接到 MeTube 服务，请确认后台 Docker 是否运行正常。";
+      debugPrint("MeTube 请求失败: $e");
+      return "无法连接到 MeTube，请检查服务器或网络状态";
     }
+  }
+
+  /// 🌟 新增：获取 MeTube 的下载记录
+  static Future<List<dynamic>> getTasks() async {
+    try {
+      // 请求 MeTube 的历史记录接口
+      final response = await _dio.get(
+        "$baseUrl/api/v1/history",
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data is String ? jsonDecode(response.data) : response.data;
+
+        // 转换数据格式，以便完美兼容你现有的 qBittorrent 列表 UI
+        return data.map((item) => {
+          'hash': item['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(), // 用 ID 充当 Hash
+          'name': item['title'] ?? 'YouTube 视频',
+          'progress': 1.0, // 历史记录里的都是 100% 完成的
+          'state': 'completed',
+          'size': item['file_size'] ?? 0,
+          'is_yt': true, // 核心标记：告诉 UI 这是 YouTube 任务
+          'poster': '', // MeTube 历史记录不带封面，直接留空
+        }).toList();
+      }
+    } catch (e) {
+      debugPrint("获取 MeTube 历史失败: $e");
+    }
+    return [];
   }
 }

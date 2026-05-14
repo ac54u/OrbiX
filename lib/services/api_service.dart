@@ -1040,4 +1040,36 @@ class MyTubeService {
       return "无法连接到 MeTube，请检查服务器或网络状态";
     }
   }
+
+  /// 🌟 新增：获取 MeTube 的下载记录
+  static Future<List<dynamic>> getTasks() async {
+    try {
+      // 请求 MeTube 的历史记录接口
+      final response = await _dio.get(
+        "$baseUrl/api/v1/history",
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data is String ? jsonDecode(response.data) : response.data;
+
+        // 转换数据格式，以便完美兼容你现有的 qBittorrent 列表 UI
+        return data.map((item) => {
+          'hash': item['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(), // 用 ID 充当 Hash
+          'name': item['title'] ?? 'YouTube 视频',
+          'progress': 1.0, // 历史记录里的都是 100% 完成的
+          'state': 'completed',
+          'size': item['file_size'] ?? 0,
+          'is_yt': true, // 核心标记：告诉 UI 这是 YouTube 任务
+          'poster': '', // MeTube 历史记录不带封面，直接留空
+        }).toList();
+      }
+    } catch (e) {
+      debugPrint("获取 MeTube 历史失败: $e");
+    }
+    return [];
+  }
 }
