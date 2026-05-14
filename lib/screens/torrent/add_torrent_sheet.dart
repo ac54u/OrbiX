@@ -79,7 +79,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
           success = true;
         } else {
           // ⚠️ 把真实的报错弹出来给大哥看
-          Utils.showToast("解析失败: $errorMsg", duration: 5);
+          Utils.showToast("解析失败: $errorMsg");
           setState(() => _isSubmitting = false);
           return;
         }
