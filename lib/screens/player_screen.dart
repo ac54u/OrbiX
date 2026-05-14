@@ -5,7 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'dart:async';
 import 'dart:ui';
-import 'package:screen_brightness/screen_brightness.dart'; // 硬件亮度控制
+import 'package:screen_brightness/screen_brightness.dart';
 
 class PlayerScreen extends StatefulWidget {
   final String streamUrl;
@@ -21,9 +21,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final player = Player();
   late final controller = VideoController(player);
 
+  // 🌟 新增：用于捕获底层播放器崩溃/网络错误
+  bool _hasError = false;
+  String _errorMsg = '';
+
   // UI 状态
   bool _showControls = true;
-  bool _isLocked = false; // 防误触锁
+  bool _isLocked = false;
   Timer? _hideTimer;
 
   // 画面比例
@@ -36,29 +40,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // 全局手势状态 (亮度/音量)
   double _volume = 50.0;
   double _brightness = 0.5;
-  String _osdType = ''; // 'volume' 或 'brightness'
+  String _osdType = '';
   bool _showOsd = false;
   Timer? _osdHideTimer;
 
   // 手势计算缓存
   double _startDragValue = 0.0;
   bool _isLeftSideDrag = true;
-  int _lastHapticLevel = 0; // 用于控制震动频率
+  int _lastHapticLevel = 0;
 
   @override
   void initState() {
     super.initState();
-    // 强制横屏，沉浸式体验
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
+    // 🌟 核心修复：监听底层的真实报错，打破无限缓冲的僵局
+    player.stream.error.listen((error) {
+      debugPrint("🚨 播放器底层报错: $error");
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMsg = error.toString();
+        });
+      }
+    });
+
     player.open(Media(widget.streamUrl));
     player.setVolume(_volume);
 
-    // 获取当前真实系统亮度
     _initBrightness();
     _startHideTimer();
   }
@@ -71,7 +84,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // 重置 UI 隐藏定时器
   void _startHideTimer() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 4), () {
@@ -81,10 +93,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // 点击屏幕逻辑
   void _handleScreenTap() {
     if (_isLocked) {
-      // 锁屏状态下，点击只短暂呼出解锁按钮
       setState(() => _showControls = true);
       _startHideTimer();
       return;
@@ -93,7 +103,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_showControls) _startHideTimer();
   }
 
-  // 呼出居中 OSD 提示
   void _showOsdIndicator(String type) {
     setState(() {
       _osdType = type;
@@ -111,7 +120,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _osdHideTimer?.cancel();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    ScreenBrightness().resetScreenBrightness(); // 退出时恢复系统亮度
+    ScreenBrightness().resetScreenBrightness();
     player.dispose();
     super.dispose();
   }
@@ -122,7 +131,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.black,
       child: Stack(
         children: [
-          // 1. 底层视频渲染
           Center(
             child: Video(
               controller: controller,
@@ -131,13 +139,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
 
-          // 2. 全局手势交互层 (HUD)
           GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTap: _handleScreenTap,
             onDoubleTapDown: (details) {
               if (_isLocked) return;
-              HapticFeedback.lightImpact(); // 双击震动反馈
+              HapticFeedback.lightImpact();
               final screenWidth = MediaQuery.of(context).size.width;
               if (details.globalPosition.dx < screenWidth / 2) {
                 player.seek(player.state.position - const Duration(seconds: 10));
@@ -151,20 +158,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
               final screenWidth = MediaQuery.of(context).size.width;
               _isLeftSideDrag = details.globalPosition.dx < screenWidth / 2;
               _startDragValue = _isLeftSideDrag ? _brightness : (_volume / 100.0);
-              _lastHapticLevel = (_startDragValue * 20).toInt(); // 分20个震动档位
+              _lastHapticLevel = (_startDragValue * 20).toInt();
             },
             onVerticalDragUpdate: (details) {
               if (_isLocked) return;
-
-              // 根据屏幕高度计算阻尼系数，让滑动极其丝滑
               final screenHeight = MediaQuery.of(context).size.height;
-              // 负数是因为向上滑动 deltaY 为负，但我们要增加数值
               final delta = -details.primaryDelta! / (screenHeight * 0.8);
 
               double newValue = (_startDragValue + delta).clamp(0.0, 1.0);
-              _startDragValue = newValue; // 累加
+              _startDragValue = newValue;
 
-              // 细腻的齿轮震动感 (每变化 5% 震动一次)
               int currentLevel = (newValue * 20).toInt();
               if (currentLevel != _lastHapticLevel) {
                 HapticFeedback.selectionClick();
@@ -185,7 +188,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             },
           ),
 
-          // 3. 屏幕中心 OSD 提示 (HUD)
           Center(
             child: AnimatedOpacity(
               opacity: _showOsd ? 1.0 : 0.0,
@@ -222,7 +224,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
 
-          // 4. UI 控件与防误触锁
           AnimatedOpacity(
             opacity: _showControls ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 300),
@@ -230,14 +231,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ignoring: !_showControls,
               child: Stack(
                 children: [
-                  // 非锁屏时显示的常规 UI
                   if (!_isLocked) ...[
                     Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
                     Center(child: _buildCenterPlayButton()),
                     Positioned(bottom: 0, left: 0, right: 0, child: _buildBottomBar()),
                   ],
 
-                  // 锁屏按钮 (浮动在左侧居中)
                   Positioned(
                     left: 40,
                     top: 0,
@@ -249,7 +248,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           HapticFeedback.mediumImpact();
                           setState(() {
                             _isLocked = !_isLocked;
-                            // 解锁后保持 UI 几秒钟
                             if (!_isLocked) _startHideTimer();
                           });
                         },
@@ -277,7 +275,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  // 动态获取 OSD 图标
   IconData _getOsdIcon() {
     if (_osdType == 'volume') {
       if (_volume == 0) return CupertinoIcons.volume_mute;
@@ -289,15 +286,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return CupertinoIcons.play_fill;
   }
 
-  // --- UI 组件封装 ---
-
-  // 🌟 升级：大厂级智能缓冲状态栏
   Widget _buildCenterPlayButton() {
+    // 🌟 如果底层报错，直接展示错误信息，不要再转圈了
+    if (_hasError) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: Colors.redAccent, size: 36),
+            const SizedBox(height: 12),
+            const Text("流媒体加载失败", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: 250,
+              child: Text(
+                _errorMsg,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return StreamBuilder<bool>(
       stream: player.stream.buffering,
       initialData: player.state.buffering,
       builder: (context, snapshot) {
-        final isBuffering = snapshot.data ?? true; // 默认初始状态为正在缓冲
+        final isBuffering = snapshot.data ?? true;
 
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
@@ -424,7 +449,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
               final realPosition = pos.data ?? Duration.zero;
               final duration = player.state.duration;
 
-              // 进度条防抖处理
               final currentSliderValue = _isDraggingProgress ? _dragProgressValue : realPosition.inSeconds.toDouble();
               final maxSliderValue = duration.inSeconds.toDouble().clamp(0.01, double.infinity);
 

@@ -401,7 +401,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-Widget _buildTorrentItem(dynamic t, bool isDark) {
+  Widget _buildTorrentItem(dynamic t, bool isDark) {
     final hash = t['hash'] ?? '';
     final state = t['state'] ?? 'unknown';
     final bool isYt = t['is_yt'] == true;
@@ -627,6 +627,7 @@ Widget _buildTorrentItem(dynamic t, bool isDark) {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 🌟 加入了 posterUrl.isNotEmpty 防御！
           if (hasPoster && posterUrl.isNotEmpty) ...[
             SizedBox(
               width: 76,
