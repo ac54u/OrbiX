@@ -31,41 +31,34 @@ class MeTubeService {
     }
   }
 
-  /// 获取 MeTube 的当前队列和历史记录
-/// 获取 MeTube 的当前队列和历史记录（防崩溃版）
+/// 获取 MeTube 的当前队列和历史记录（精准字段匹配版）
   static Future<List<dynamic>> getDownloads() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // 获取 URL 并去掉末尾可能多余的斜杠
       String metubeUrl = prefs.getString('metube_url') ?? defaultUrl;
       if (metubeUrl.endsWith('/')) {
         metubeUrl = metubeUrl.substring(0, metubeUrl.length - 1);
       }
 
-      debugPrint("🚀 正在请求 MeTube 接口: $metubeUrl/api/v1/history");
-      final r = await _dio.get('$metubeUrl/api/v1/history');
+      final r = await _dio.get('$metubeUrl/history');
 
       if (r.statusCode == 200) {
         List<dynamic> allTasks = [];
 
-        // 智能判断：如果返回的是个字典 (Map)
         if (r.data is Map) {
+          // 🌟 致命修复：已完成的字段名是 'done'，不是 'history'
           if (r.data['queue'] != null) allTasks.addAll(r.data['queue']);
-          if (r.data['history'] != null) allTasks.addAll(r.data['history']);
-        }
-        // 智能判断：如果返回的直接就是个列表 (List)
-        else if (r.data is List) {
+          if (r.data['done'] != null) allTasks.addAll(r.data['done']);
+          if (r.data['pending'] != null) allTasks.addAll(r.data['pending']);
+        } else if (r.data is List) {
           allTasks.addAll(r.data);
         }
 
-        debugPrint("✅ 成功解析到 ${allTasks.length} 个视频任务");
         return allTasks;
-      } else {
-        debugPrint("⚠️ MeTube 接口返回异常状态码: ${r.statusCode}");
-        return [];
       }
+      return [];
     } catch (e) {
-      debugPrint("🚨 获取或解析 MeTube 数据彻底失败: $e");
+      debugPrint("🚨 请求 MeTube 彻底失败: $e");
       return [];
     }
   }
