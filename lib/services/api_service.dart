@@ -918,8 +918,8 @@ class ApiService {
     return null;
   }
 
-  // ==========================================
-  // 🌟 终极版：调用 Cobalt 提取直链并推送 qBittorrent (已适配最新 API 路径)
+// ==========================================
+  // 🌟 终极版：调用 Cobalt 提取直链并推送 qBittorrent (适配极致严格的 v11.7.1 API)
   // ==========================================
   static Future<String?> addYoutubeTask(String url) async {
     try {
@@ -927,26 +927,23 @@ class ApiService {
 
       final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
       final host = Uri.parse(apiUrl).host;
-
-      // 🌟 核心修复 1：使用 Cobalt 新版基础接口路径 (根目录)
       final cobaltUrl = 'http://$host:9000/';
 
-      // 🌟 核心修复 2：新版 Cobalt 参数 (简化且不携带废弃字段)
+      // 🌟 终极修复：大道至简！只传最基本的 url，砍掉所有多余参数。
+      // 强制使用 jsonEncode 确保生成 100% 合法的 JSON 字符串，彻底绝杀 invalid_body 报错！
+      final requestBody = jsonEncode({
+        'url': url
+      });
+
       final r = await _dio.post(
         cobaltUrl,
-        data: {
-          'url': url,
-          'videoQuality': '1080',
-          'isAudioOnly': false,
-          'filenameStyle': 'pretty'
-        },
+        data: requestBody,
         options: Options(
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           },
-          validateStatus: (status) => true, // 允许接收 404 等状态码以便排错
+          validateStatus: (status) => true,
         ),
       );
 
@@ -957,12 +954,13 @@ class ApiService {
         final data = r.data is String ? jsonDecode(r.data) : r.data;
 
         if (data['status'] == 'error' || data['status'] == 'stream') {
-           return "Cobalt 引擎返回流媒体或拦截: ${data['text'] ?? '未知错误'}";
+           return "Cobalt 引擎拦截或遇到流媒体: ${data['text'] ?? '未知错误'}";
         }
 
         final downloadUrl = data['url'];
 
         if (downloadUrl != null && downloadUrl.toString().isNotEmpty) {
+          // 拿到直链，下发给 qBittorrent
           bool success = await addTorrent(
             downloadUrl,
             savePath: '/data/media/YouTube',
@@ -976,15 +974,17 @@ class ApiService {
           }
         }
         return "未能从引擎获取有效下载链接";
-      } else if (r.statusCode == 404) {
-        // 如果根目录也报 404，尝试使用老版本路由作为最后的降级方案
-        return _fallbackCobaltApi(host, url);
       } else {
-        return "Cobalt 引擎请求失败 HTTP ${r.statusCode}\n返回: ${r.data}";
+        // 如果还是报错，尝试从返回的 JSON 中提取准确的 error code
+        String errMsg = "HTTP ${r.statusCode}";
+        if (r.data is Map && r.data['error'] != null && r.data['error']['code'] != null) {
+          errMsg += " -> ${r.data['error']['code']}";
+        }
+        return "Cobalt 引擎请求失败 $errMsg";
       }
     } catch (e) {
       debugPrint("Cobalt 请求异常: $e");
-      return "引擎连接失败，请确认 Docker 已运行 cobalt 且 9000 端口开放";
+      return "引擎连接失败，请确认 Docker 容器状态";
     }
   }
 
