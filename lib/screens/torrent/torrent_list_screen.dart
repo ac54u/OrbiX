@@ -401,7 +401,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     );
   }
 
-  Widget _buildTorrentItem(dynamic t, bool isDark) {
+Widget _buildTorrentItem(dynamic t, bool isDark) {
     final hash = t['hash'] ?? '';
     final state = t['state'] ?? 'unknown';
     final bool isYt = t['is_yt'] == true;
@@ -459,7 +459,28 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               }
             },
           ),
+          // 🌟 新增：DeepSeek AI 同声传译按钮
+          CupertinoContextMenuAction(
+            trailingIcon: CupertinoIcons.wand_stars,
+            child: const Text("DeepSeek AI 翻译"),
+            onPressed: () async {
+              Navigator.pop(context);
+              final name = t['name'] ?? '';
+              if (name.isNotEmpty) {
+                HapticFeedback.selectionClick();
+                Utils.showToast("🚀 已请求 DeepSeek 翻译，请耐心等待...");
+
+                final success = await ApiService.requestTranslation(name);
+                if (success) {
+                  Utils.showToast("✅ 后端已开始处理，稍后播放即可加载中文字幕");
+                } else {
+                  Utils.showToast("❌ 翻译请求失败，请检查后端状态");
+                }
+              }
+            },
+          ),
           if (!isYt) ...[
+            Container(height: 1, color: CupertinoColors.systemGrey5),
             CupertinoContextMenuAction(
               isDestructiveAction: true,
               trailingIcon: CupertinoIcons.trash,

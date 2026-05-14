@@ -979,4 +979,25 @@ class ApiService {
     } catch (_) {}
     return false;
   }
+  // 🌟 请求后端进行 AI 同声传译
+  static Future<bool> requestTranslation(String torrentName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
+    final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
+
+    try {
+      final r = await _dio.post(
+        '$baseUrl/api/translate',
+        data: {'torrent_name': torrentName},
+        options: Options(
+          sendTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10), // 只等确认接收，不等翻译完成
+        ),
+      );
+      return r.statusCode == 200 || r.statusCode == 202;
+    } catch (e) {
+      debugPrint("翻译请求发送失败: $e");
+      return false;
+    }
+  }
 }
