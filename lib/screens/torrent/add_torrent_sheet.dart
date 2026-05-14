@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart'; 
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import '../../core/utils.dart';
 import '../../core/constants.dart';
@@ -19,7 +20,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
   final _urlController = TextEditingController();
   final _categoryController = TextEditingController();
   final _tagsController = TextEditingController();
-  
+
   String? _selectedFilePath;
   bool _isSubmitting = false;
 
@@ -34,7 +35,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
   // 选择 .torrent 文件
   Future<void> _pickFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.any, 
+      type: FileType.any,
     );
 
     if (result != null && result.files.single.path != null) {
@@ -44,14 +45,14 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
   }
 
-  // 提交添加请求
+  // 提交添加请求 (🌟 已加入 YouTube 智能分流)
   Future<void> _submit() async {
     setState(() => _isSubmitting = true);
 
     // 自动读取设置里的默认路径
     final prefs = await SharedPreferences.getInstance();
     String? defaultPath = prefs.getString('default_path');
-    
+
     // 如果设置里是空的，就传 null (让 qBittorrent 使用它自己的默认配置)
     if (defaultPath != null && defaultPath.trim().isEmpty) {
       defaultPath = null;
@@ -62,19 +63,27 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     final tags = _tagsController.text.isNotEmpty ? _tagsController.text : null;
 
     if (_groupValue == 0) {
-      // --- 添加链接 (磁力/URL) ---
-      if (_urlController.text.isEmpty) {
+      // --- 添加链接 (磁力/URL/YouTube) ---
+      final url = _urlController.text.trim();
+      if (url.isEmpty) {
          Utils.showToast("请输入链接");
          setState(() => _isSubmitting = false);
          return;
       }
-      
-      success = await ApiService.addTorrent(
-        _urlController.text,
-        savePath: defaultPath,
-        category: cat,
-        tags: tags,
-      );
+
+      // 🌟 核心智能分流逻辑
+      if (url.contains('youtube.com') || url.contains('youtu.be')) {
+        Utils.showToast("正在解析 YouTube 视频...");
+        success = await ApiService.addYoutubeTask(url);
+      } else {
+        Utils.showToast("正在提交下载任务...");
+        success = await ApiService.addTorrent(
+          url,
+          savePath: defaultPath,
+          category: cat,
+          tags: tags,
+        );
+      }
 
     } else {
       // --- 添加文件 (.torrent) ---
@@ -95,16 +104,17 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     setState(() => _isSubmitting = false);
 
     if (success) {
+      HapticFeedback.heavyImpact();
       String msg = "添加成功";
-      if (defaultPath != null) {
+      if (defaultPath != null && !(_urlController.text.contains('youtube.com') || _urlController.text.contains('youtu.be'))) {
         final folderName = defaultPath.split('/').last;
         msg += " (存入: $folderName)";
       }
-      
+
       Utils.showToast(msg);
       if (mounted) Navigator.pop(context);
     } else {
-      Utils.showToast("添加失败，请检查网络");
+      Utils.showToast("添加失败，请检查网络或链接");
     }
   }
 
@@ -115,9 +125,9 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     final textColor = isDark ? Colors.white : Colors.black;
 
     return Container(
-      height: MediaQuery.of(context).size.height * 0.85, 
+      height: MediaQuery.of(context).size.height * 0.85,
       decoration: BoxDecoration(
-        color: isDark ? kBgColorDark : kBgColorLight, 
+        color: isDark ? kBgColorDark : kBgColorLight,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
@@ -138,7 +148,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                   child: const Text("取消"),
                   onPressed: () => Navigator.pop(context),
                 ),
-                Text("添加种子", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: textColor)),
+                Text("添加任务", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: textColor)),
                 _isSubmitting
                     ? const CupertinoActivityIndicator()
                     : CupertinoButton(
@@ -149,7 +159,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
               ],
             ),
           ),
-          
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -175,13 +185,13 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                   // 内容区域
                   if (_groupValue == 0) ...[
                     // --- 链接输入 ---
-                    const Text("种子链接", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const Text("种子或 YouTube 链接", style: TextStyle(fontSize: 12, color: Colors.grey)),
                     const SizedBox(height: 8),
                     CupertinoTextField(
                       controller: _urlController,
-                      placeholder: "磁力链接或种子 URL",
+                      placeholder: "磁力链接 / HTTP种子 / YouTube",
                       maxLines: 4,
-                      autofocus: true, 
+                      autofocus: true,
                       style: TextStyle(color: textColor),
                       decoration: BoxDecoration(
                         color: bgColor,
@@ -191,7 +201,13 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                         padding: EdgeInsets.zero,
                         child: const Icon(CupertinoIcons.doc_on_clipboard),
                         onPressed: () async {
-                           // 简单的粘贴板逻辑占位
+                           final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
+                           if (data != null && data.text != null) {
+                             setState(() {
+                               _urlController.text = data.text!;
+                             });
+                             HapticFeedback.selectionClick();
+                           }
                         },
                       ),
                     ),
@@ -235,9 +251,9 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                   ],
 
                   const SizedBox(height: 24),
-                  const Text("可选设置", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const Text("可选设置 (仅对种子生效)", style: TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 8),
-                  
+
                   // 选项组
                   Container(
                     decoration: BoxDecoration(
@@ -251,7 +267,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                       ],
                     ),
                   ),
-                  
+
                   // 底部提示
                   const SizedBox(height: 12),
                   Row(
@@ -267,7 +283,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                              if (path.length > 25) path = "...${path.substring(path.length - 25)}";
                            }
                            return Text(
-                             "将自动保存到: $path",
+                             "BT将保存到: $path",
                              style: const TextStyle(fontSize: 12, color: Colors.grey),
                            );
                         },

@@ -887,6 +887,41 @@ class ApiService {
     return null;
   }
 
+// 🌟 提交 YouTube 下载任务
+  static Future<bool> addYoutubeTask(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
+    final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
+
+    try {
+      final r = await _dio.post(
+        '$baseUrl/api/yt/add',
+        data: {
+          'url': url,
+          'save_dir': '/data/media/YouTube', // 🌟 专属存放文件夹
+        },
+      );
+      return r.statusCode == 200;
+    } catch (e) {
+      debugPrint("YouTube下载请求失败: $e");
+      return false;
+    }
+  }
+
+  // 🌟 获取 YouTube 任务列表
+  static Future<List<dynamic>> getYtTorrents() async {
+    final prefs = await SharedPreferences.getInstance();
+    final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
+    final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
+
+    try {
+      final r = await _dio.get('$baseUrl/api/yt/list');
+      if (r.data is List) return r.data;
+    } catch (e) {
+      debugPrint("获取YT列表失败: $e");
+    }
+    return [];
+  }
   // ==========================================
   // --- 🌟 GitHub OTA 热更新探针 ---
   // ==========================================

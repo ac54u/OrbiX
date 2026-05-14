@@ -96,6 +96,9 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       final hash = t['hash'];
       final rawName = t['name'] ?? '';
 
+      // 🌟 YouTube 任务自带封面，不需要去 TMDB 刮削
+      if (t['is_yt'] == true) continue;
+
       if (hash == null || rawName.isEmpty) continue;
       if (_tmdbCache.containsKey(hash)) continue;
 
@@ -118,14 +121,21 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 
   Future<void> _fetchTorrents() async {
-    final data = await ApiService.getTorrents(
+    // 🌟 1. 抓取原有的 BT 任务
+    final btData = await ApiService.getTorrents(
       filter: _filterStatus == 'default' ? 'all' : _filterStatus,
       category: _filterCategory,
       tag: _filterTag,
-    );
+    ) ?? [];
 
-    if (data != null && mounted) {
-      for (var t in data) {
+    // 🌟 2. 抓取 YouTube 下载任务
+    final ytData = await ApiService.getYtTorrents();
+
+    // 🌟 3. 完美拼合两种任务！
+    final List<dynamic> allData = [...btData, ...ytData];
+
+    if (mounted) {
+      for (var t in allData) {
         final hash = t['hash'];
         final double progress = (t['progress'] ?? 0.0).toDouble();
         final double? prevProgress = _previousProgress[hash];
@@ -144,12 +154,11 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       }
 
       setState(() {
-        _torrents = data;
+        _torrents = allData;
         _isLoggedIn = true;
       });
-      _fetchPostersBackground(data);
-    } else {
-      setState(() => _isLoggedIn = false);
+      // 🌟 只给 BT 任务发送刮削请求
+      _fetchPostersBackground(btData);
     }
   }
 
@@ -160,7 +169,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         builder: (ctx) => CupertinoAlertDialog(
           title: const Text("确认删除"),
           content: Text(
-            action == 'deleteWithFiles' ? "确定要删除种子和本地文件吗？不可恢复。" : "确定要删除这个任务吗？",
+            action == 'deleteWithFiles' ? "确定要删除资源和本地文件吗？不可恢复。" : "确定要删除这个任务吗？",
           ),
           actions: [
             CupertinoDialogAction(
@@ -229,28 +238,25 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 
-  // 🌟 智能播放链路：绕过 Emby 扫描，直连物理文件秒播
   Future<void> _handlePlay(dynamic t) async {
     final String rawName = t['name'] ?? '';
     final String hash = t['hash'] ?? '';
+    final bool isYt = t['is_yt'] == true;
+
     if (rawName.isEmpty) return;
 
-    // 获取用来展示在播放器顶部的中文标题（如果没有就用原名）
     final tmdbData = _tmdbCache[hash];
-    final String displayTitle = (tmdbData != null && tmdbData['status'] == 'success')
-        ? (tmdbData['title'] ?? rawName)
-        : rawName;
+    final String displayTitle = isYt
+        ? rawName
+        : ((tmdbData != null && tmdbData['status'] == 'success') ? (tmdbData['title'] ?? rawName) : rawName);
 
     Utils.showToast("⚡ 正在建立物理直连通道...");
 
-    // 1. 直接向咱们的 Flask 要直连推流地址
     String? streamUrl = await ApiService.getDirectStreamUrl(rawName);
 
     if (streamUrl != null && mounted) {
-      // 2. 顺手发个整理请求给 Emby 慢慢扫（咱们不差它这点时间，权当后台整理了）
       EmbyService.processAndRefresh(rawName).catchError((_) => false);
 
-      // 3. 拿到了直链，不等 Emby，直接拉起媒体播放器！
       Navigator.push(
         context,
         CupertinoPageRoute(
@@ -398,6 +404,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   Widget _buildTorrentItem(dynamic t, bool isDark) {
     final hash = t['hash'] ?? '';
     final state = t['state'] ?? 'unknown';
+    final bool isYt = t['is_yt'] == true;
 
     bool isStopped =
         state.toLowerCase().contains('paused') ||
@@ -408,70 +415,37 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: CupertinoContextMenu(
+        // 🌟 针对 YouTube 任务隐藏 BT 专用的重校验等按钮
         actions: [
-          CupertinoContextMenuAction(
-            trailingIcon: isStopped
-                ? CupertinoIcons.play_arrow_solid
-                : CupertinoIcons.pause_fill,
-            child: Text(isStopped ? "启动" : "暂停"),
-            onPressed: () {
-              Navigator.pop(context);
-              if (Utils.isValidHash(hash)) {
-                _executeAction(hash, isStopped ? 'start' : 'pause');
-              } else {
-                Utils.showToast("无效的 Hash ID");
-              }
-            },
-          ),
-          CupertinoContextMenuAction(
-            trailingIcon: CupertinoIcons.bolt_fill,
-            child: const Text("强制启动"),
-            onPressed: () {
-              Navigator.pop(context);
-              _executeAction(hash, 'forceStart');
-            },
-          ),
-          CupertinoContextMenuAction(
-            trailingIcon: CupertinoIcons.arrow_2_circlepath,
-            child: const Text("强制校验"),
-            onPressed: () {
-              Navigator.pop(context);
-              _executeAction(hash, 'forceRecheck');
-            },
-          ),
-          CupertinoContextMenuAction(
-            trailingIcon: CupertinoIcons.antenna_radiowaves_left_right,
-            child: const Text("强制汇报"),
-            onPressed: () {
-              Navigator.pop(context);
-              _executeAction(hash, 'forceReannounce');
-            },
-          ),
-          CupertinoContextMenuAction(
-            trailingIcon: CupertinoIcons.arrow_up_to_line,
-            child: const Text("置顶队列"),
-            onPressed: () {
-              Navigator.pop(context);
-              _executeAction(hash, 'topPrio');
-            },
-          ),
-          CupertinoContextMenuAction(
-            trailingIcon: CupertinoIcons.arrow_up,
-            child: const Text("提高优先级"),
-            onPressed: () {
-              Navigator.pop(context);
-              _executeAction(hash, 'increasePrio');
-            },
-          ),
-          CupertinoContextMenuAction(
-            trailingIcon: CupertinoIcons.arrow_down,
-            child: const Text("降低优先级"),
-            onPressed: () {
-              Navigator.pop(context);
-              _executeAction(hash, 'decreasePrio');
-            },
-          ),
-          Container(height: 1, color: CupertinoColors.systemGrey5),
+          if (!isYt) ...[
+            CupertinoContextMenuAction(
+              trailingIcon: isStopped ? CupertinoIcons.play_arrow_solid : CupertinoIcons.pause_fill,
+              child: Text(isStopped ? "启动" : "暂停"),
+              onPressed: () {
+                Navigator.pop(context);
+                if (Utils.isValidHash(hash)) {
+                  _executeAction(hash, isStopped ? 'start' : 'pause');
+                }
+              },
+            ),
+            CupertinoContextMenuAction(
+              trailingIcon: CupertinoIcons.bolt_fill,
+              child: const Text("强制启动"),
+              onPressed: () {
+                Navigator.pop(context);
+                _executeAction(hash, 'forceStart');
+              },
+            ),
+            CupertinoContextMenuAction(
+              trailingIcon: CupertinoIcons.arrow_2_circlepath,
+              child: const Text("强制校验"),
+              onPressed: () {
+                Navigator.pop(context);
+                _executeAction(hash, 'forceRecheck');
+              },
+            ),
+            Container(height: 1, color: CupertinoColors.systemGrey5),
+          ],
           CupertinoContextMenuAction(
             trailingIcon: CupertinoIcons.wand_rays,
             child: const Text("手动整理与入库"),
@@ -485,27 +459,31 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               }
             },
           ),
-          CupertinoContextMenuAction(
-            isDestructiveAction: true,
-            trailingIcon: CupertinoIcons.trash,
-            child: const Text("删除任务"),
-            onPressed: () {
-              Navigator.pop(context);
-              _executeAction(hash, 'delete');
-            },
-          ),
-          CupertinoContextMenuAction(
-            isDestructiveAction: true,
-            trailingIcon: CupertinoIcons.trash_fill,
-            child: const Text("删除任务和文件"),
-            onPressed: () {
-              Navigator.pop(context);
-              _executeAction(hash, 'deleteWithFiles');
-            },
-          ),
+          if (!isYt) ...[
+            CupertinoContextMenuAction(
+              isDestructiveAction: true,
+              trailingIcon: CupertinoIcons.trash,
+              child: const Text("删除任务"),
+              onPressed: () {
+                Navigator.pop(context);
+                _executeAction(hash, 'delete');
+              },
+            ),
+            CupertinoContextMenuAction(
+              isDestructiveAction: true,
+              trailingIcon: CupertinoIcons.trash_fill,
+              child: const Text("删除任务和文件"),
+              onPressed: () {
+                Navigator.pop(context);
+                _executeAction(hash, 'deleteWithFiles');
+              },
+            ),
+          ]
         ],
         child: GestureDetector(
           onDoubleTap: () async {
+            if (isYt) return; // YT 任务没有 TMDB 数据，不支持双击详情
+
             final rawName = t['name'] ?? '';
             if (rawName.isEmpty) return;
 
@@ -539,14 +517,20 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               Utils.showToast("未匹配到相关影视元数据");
             }
           },
-          onTap: () => Navigator.of(context).push(
-            CupertinoPageRoute(
-              builder: (context) => TorrentDetailScreen(
-                torrent: t,
-                movieData: _tmdbCache[hash]?['status'] == 'success' ? _tmdbCache[hash] : null,
-              ),
-            ),
-          ),
+          onTap: () {
+            if (isYt) {
+              _handlePlay(t); // YouTube 直接播放
+            } else {
+              Navigator.of(context).push(
+                CupertinoPageRoute(
+                  builder: (context) => TorrentDetailScreen(
+                    torrent: t,
+                    movieData: _tmdbCache[hash]?['status'] == 'success' ? _tmdbCache[hash] : null,
+                  ),
+                ),
+              );
+            }
+          },
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Slidable(
@@ -562,13 +546,14 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     icon: CupertinoIcons.play_rectangle_fill,
                     label: '播放',
                   ),
-                  SlidableAction(
-                    onPressed: (ctx) => _executeAction(hash, 'delete'),
-                    backgroundColor: const Color(0xFFFF3B30),
-                    foregroundColor: Colors.white,
-                    icon: CupertinoIcons.delete,
-                    label: '删除',
-                  ),
+                  if (!isYt) // YT 暂时隐藏滑动删除
+                    SlidableAction(
+                      onPressed: (ctx) => _executeAction(hash, 'delete'),
+                      backgroundColor: const Color(0xFFFF3B30),
+                      foregroundColor: Colors.white,
+                      icon: CupertinoIcons.delete,
+                      label: '删除',
+                    ),
                 ],
               ),
               child: _buildTorrentCard(t, isDark),
@@ -589,6 +574,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
 
     final String rawName = t['name'] ?? '';
     final int totalSize = t['size'] ?? 0;
+    final bool isYt = t['is_yt'] == true; // 🌟 是否是 YouTube 任务
 
     final stateConfig = _getStateConfig(stateRaw);
     final String stateText = stateConfig['text'];
@@ -605,9 +591,11 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       quality = '';
     }
 
+    // 🌟 海报获取逻辑：如果是 YouTube，直接取 t['poster']，否则取 _tmdbCache
     final tmdbData = _tmdbCache[hash];
-    final bool hasPoster = tmdbData != null && tmdbData['status'] == 'success';
-    final String posterUrl = hasPoster ? tmdbData['poster_url'] : '';
+    final String ytPoster = t['poster'] ?? '';
+    final bool hasPoster = isYt ? ytPoster.isNotEmpty : (tmdbData != null && tmdbData['status'] == 'success');
+    final String posterUrl = isYt ? ytPoster : (hasPoster ? tmdbData['poster_url'] : '');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -691,6 +679,14 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       ),
                     ),
                   ),
+
+                  // 🌟 如果是 YouTube 任务，在封面上加一个小小的播放图标遮罩，增加辨识度
+                  if (isYt)
+                    const Positioned.fill(
+                      child: Center(
+                        child: Icon(CupertinoIcons.play_circle_fill, color: Colors.white70, size: 32),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -706,7 +702,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        hasPoster ? tmdbData['title'] : rawName,
+                        hasPoster && !isYt ? tmdbData['title'] : rawName,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -739,32 +735,51 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      if (hasPoster)
+                      // 🌟 YouTube 专属红色徽章
+                      if (isYt)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(CupertinoIcons.play_rectangle_fill, color: Colors.red, size: 10),
+                              SizedBox(width: 3),
+                              Text('YouTube', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+
+                      if (hasPoster && !isYt)
                         Text(
                           "${tmdbData['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData['vote_average']}",
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
 
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(4),
+                      if (!isYt) // YT 体积通常由后端计算，有时候不准，可选择隐藏或保留
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
                         ),
-                        child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
-                      ),
 
-                      if (is4K)
+                      if (is4K || isYt) // YT 默认我们下的最高画质，标个 4K 装逼
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFF3B30).withOpacity(0.12),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('4K', style: TextStyle(fontSize: 10, color: Color(0xFFFF3B30), fontWeight: FontWeight.w800)),
+                          child: const Text('4K HDR', style: TextStyle(fontSize: 10, color: Color(0xFFFF3B30), fontWeight: FontWeight.w800)),
                         ),
 
-                      if (quality.isNotEmpty)
+                      if (quality.isNotEmpty && !isYt)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
@@ -798,7 +813,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   child: LinearProgressIndicator(
                     value: progress,
                     backgroundColor: isDark ? Colors.grey[800] : const Color(0xFFF2F2F7),
-                    color: stateColor,
+                    // 🌟 如果是 YT，进度条变成专属的红色！
+                    color: isYt && progress < 1.0 ? Colors.red : stateColor,
                     minHeight: 4,
                   ),
                 ),
@@ -808,9 +824,12 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(CupertinoIcons.chart_bar_alt_fill, size: 14, color: Color(0xFFFF9500)),
+                        Icon(isYt ? CupertinoIcons.cloud_download_fill : CupertinoIcons.chart_bar_alt_fill,
+                             size: 14,
+                             color: isYt ? Colors.red : const Color(0xFFFF9500)),
                         const SizedBox(width: 4),
-                        Text((t['ratio'] ?? 0).toStringAsFixed(2), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text(isYt ? 'YouTube DLP' : (t['ratio'] ?? 0).toStringAsFixed(2),
+                             style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                     Row(
@@ -846,6 +865,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       case 'error':
       case 'missingFiles':
         return {'text': '错误', 'color': const Color(0xFFFF3B30)};
+      case 'completed':
+        return {'text': '已完成', 'color': const Color(0xFF34C759)};
       default:
         return {'text': state, 'color': Colors.grey};
     }
