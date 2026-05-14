@@ -121,7 +121,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     }
   }
 
-Future<void> _fetchTorrents() async {
+  Future<void> _fetchTorrents() async {
     // 🌟 1. 抓取原有的 BT 任务
     final btData = await ApiService.getTorrents(
       filter: _filterStatus == 'default' ? 'all' : _filterStatus,
@@ -132,16 +132,18 @@ Future<void> _fetchTorrents() async {
     // 🌟 2. 抓取真实的 MeTube 下载任务
     final rawYtData = await MeTubeService.getDownloads();
 
-    // 🌟 3. 数据“伪装”：把 MeTube 的数据格式转换成你 UI 能看懂的字典
-    // 🌟 3. 数据“伪装”：把 MeTube 的数据格式转换成你 UI 能看懂的字典 (带容错)
+    // 🌟 3. 数据“伪装”：把 MeTube 的数据格式转换成 UI 字典 (带容错)
     final ytData = rawYtData.map((task) {
       try {
         double percent = 0.0;
         final status = task['status'] ?? 'unknown';
 
+        // 🌟 致命修复：增加对 finished 状态的识别
+        final isDone = status == 'finished' || status == 'completed';
+
         if (task['percent'] != null) {
           percent = (double.tryParse(task['percent'].toString()) ?? 0.0) / 100.0;
-        } else if (status == 'completed') {
+        } else if (isDone) {
           percent = 1.0;
         }
 
@@ -149,7 +151,7 @@ Future<void> _fetchTorrents() async {
           'hash': 'metube_${task['id'] ?? task.hashCode}', // 兼容没有 id 的情况
           'name': task['title'] ?? task['name'] ?? task['url'] ?? '未知视频任务',
           'progress': percent,
-          'state': status == 'completed' ? 'completed' : 'downloading',
+          'state': isDone ? 'completed' : 'downloading', // 强行转换为 UI 认识的 completed，让它变绿！
           'is_yt': true,
         };
       } catch (e) {
@@ -189,6 +191,7 @@ Future<void> _fetchTorrents() async {
       _fetchPostersBackground(btData);
     }
   }
+
   Future<void> _executeAction(String hash, String action) async {
     if (action == 'delete' || action == 'deleteWithFiles') {
       bool? confirm = await showCupertinoDialog(
