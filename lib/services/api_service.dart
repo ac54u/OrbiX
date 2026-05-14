@@ -8,7 +8,7 @@ import '../core/constants.dart';
 import '../core/utils.dart';
 import 'server_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/foundation.dart'; // 🌟 解决 debugPrint 找不到的问题
+import 'package:flutter/foundation.dart';
 
 class ApiService {
   static final Dio _dio = Dio();
@@ -119,7 +119,6 @@ class ApiService {
         options: opts,
       );
 
-      // 🌟 防御性解析增强
       if (r.data is String) {
         try {
           return jsonDecode(r.data);
@@ -492,7 +491,6 @@ class ApiService {
     }
   }
 
-  // 🌟 1. 从全球最大的开源 Tracker 库获取“神级”节点列表
   static Future<List<String>> fetchBestTrackers() async {
     try {
       final dio = Dio();
@@ -516,7 +514,6 @@ class ApiService {
     return [];
   }
 
-  // 🌟 2. 智能注入 Tracker 到 qBittorrent 任务
   static Future<bool> injectTrackers(String hash, bool isPrivate) async {
     if (isPrivate) {
       Utils.showToast("⚠️ 保护机制触发：禁止给 PT 种子添加 Tracker！");
@@ -644,9 +641,6 @@ class ApiService {
     }
   }
 
-  // ==========================================
-  // 🌟 终极修复：Emby 双重搜索机制
-  // ==========================================
   static Future<String?> checkMovieInEmby(String tmdbId, {String? title}) async {
     _ensureInit();
     final prefs = await SharedPreferences.getInstance();
@@ -658,7 +652,6 @@ class ApiService {
     final cleanUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
 
     try {
-      // 🚀 尝试 1：通过 TMDB ID 精准搜索
       var response = await _dio.get(
         '$cleanUrl/emby/Items',
         queryParameters: {
@@ -673,7 +666,6 @@ class ApiService {
         return data['Items'][0]['Id'].toString();
       }
 
-      // 🚀 尝试 2：自动降级为“片名模糊搜索”
       if (title != null && title.isNotEmpty) {
         response = await _dio.get(
           '$cleanUrl/emby/Items',
@@ -694,7 +686,6 @@ class ApiService {
     return null;
   }
 
-  // 🌟 获取 Emby 真实流媒体播放地址
   static Future<String?> getEmbyStreamUrl(String itemId) async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('emby_url') ?? '';
@@ -706,18 +697,12 @@ class ApiService {
     return '$cleanUrl/emby/Videos/$itemId/stream?static=true&api_key=$key';
   }
 
-  // ==========================================
-  // 🌟 终极大招：物理层直连推流 (彻底绕过 Emby 扫描)
-  // ==========================================
   static Future<String?> getDirectStreamUrl(String torrentName) async {
     final prefs = await SharedPreferences.getInstance();
     final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com/api/sync';
     final apiToken = prefs.getString('orbix_api_token') ?? 'orbix_super_secret_token_2026';
 
-    // 把末尾的 /api/sync 截掉，换成咱们新建的推流接口 /api/stream
     final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
-
-    // 拼接出最终的直连流媒体地址
     final streamUrl = "$baseUrl/api/stream?token=$apiToken&torrent_name=${Uri.encodeComponent(torrentName)}";
     debugPrint("🚀 物理直连播放地址: $streamUrl");
     return streamUrl;
@@ -784,10 +769,6 @@ class ApiService {
       return false;
     }
   }
-
-  // ==========================================
-  // --- Sonarr 剧集联动 API ---
-  // ==========================================
 
   static Future<List<dynamic>> searchSonarr(String query) async {
     final p = await SharedPreferences.getInstance();
@@ -864,10 +845,6 @@ class ApiService {
     }
   }
 
-  // ==========================================
-  // --- 🌟 Radarr 交互式搜索联动 API ---
-  // ==========================================
-
   static Future<List<dynamic>> getRadarrReleases(int movieId) async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString('radarr_url');
@@ -941,74 +918,78 @@ class ApiService {
     return null;
   }
 
-  // 🌟 提交 YouTube 下载任务 (升级版：彻底解决 String vs int index 报错)
+  // ==========================================
+  // 🌟 终极版：调用 Cobalt 提取直链并推送 qBittorrent
+  // ==========================================
   static Future<String?> addYoutubeTask(String url) async {
-    final prefs = await SharedPreferences.getInstance();
-    final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
-    final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
-
     try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 提取服务器域名/IP，拼装出 Cobalt 的 9000 端口地址
+      // 例如：https://api.dmitt.com/api/sync -> http://api.dmitt.com:9000/api/json
+      final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
+      final host = Uri.parse(apiUrl).host;
+      final cobaltUrl = 'http://$host:9000/api/json';
+
+      // 1. 请求 Cobalt 解析 1080p/4K 直连地址
       final r = await _dio.post(
-        '$baseUrl/api/yt/add',
+        cobaltUrl,
         data: {
           'url': url,
-          'save_dir': '/data/media/YouTube',
+          'videoQuality': '1080', // Cobalt 内置参数，拿最高清的合并流
+          'filenameStyle': 'pretty',
+          'downloadMode': 'auto'
         },
-        options: Options(validateStatus: (status) => true), // 接收所有状态码
+        options: Options(
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          validateStatus: (status) => true,
+        ),
       );
 
-      if (r.statusCode == 200) {
-        return null; // 成功返回 null
-      } else {
-        // 🚨 核心修复：后端如果是 500/502，可能返回一个纯 HTML 字符串。
-        // 如果直接 r.data['msg'] 会导致 Dart 把 String 当 Map 从而引发类型错误崩溃
-        if (r.data is Map) {
-          return r.data['msg']?.toString() ?? "服务器返回错误: ${r.statusCode}";
-        } else if (r.data is String) {
-          // 尝试看看是不是 JSON 字符串
-          try {
-            final decoded = jsonDecode(r.data);
-            if (decoded is Map) {
-              return decoded['msg']?.toString() ?? "服务器返回错误: ${r.statusCode}";
-            }
-          } catch (_) {}
-          // 如果解析失败，说明是 HTML 或者不可预知的文本，直接返回原始状态码防御崩溃
-          return "服务器异常(${r.statusCode}): 接口未返回标准 JSON 数据";
+      if (r.statusCode == 200 && r.data != null) {
+        final data = r.data is String ? jsonDecode(r.data) : r.data;
+
+        if (data['status'] == 'error') {
+          return "Cobalt 引擎拦截: ${data['text']}";
         }
-        return "未知错误，状态码: ${r.statusCode}";
+
+        // 提取到纯净的 mp4 直链
+        final downloadUrl = data['url'];
+
+        if (downloadUrl != null && downloadUrl.toString().isNotEmpty) {
+          // 2. 直接交给服务器的 qBittorrent 去下载！
+          // 由于这是直链，qB 会用普通的 HTTP 协议把它下载到 /data/media/YouTube
+          bool success = await addTorrent(
+            downloadUrl,
+            savePath: '/data/media/YouTube',
+            category: 'YouTube'
+          );
+
+          if (success) {
+            return null; // 成功
+          } else {
+            return "解析成功，但推送给 qBittorrent 下载失败";
+          }
+        }
+        return "未能获取有效下载链接";
+      } else {
+        return "Cobalt 引擎请求失败 HTTP ${r.statusCode}";
       }
     } catch (e) {
-      debugPrint("YouTube下载请求失败: $e");
-      return "网络异常: $e";
+      debugPrint("Cobalt 请求异常: $e");
+      return "引擎连接失败，请确认 Docker 已运行 cobalt";
     }
   }
 
-  // 🌟 获取 YouTube 任务列表
+  // 🌟 (已废弃/兼容保留) 获取 YouTube 任务列表
   static Future<List<dynamic>> getYtTorrents() async {
-    final prefs = await SharedPreferences.getInstance();
-    final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
-    final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
-
-    try {
-      final r = await _dio.get('$baseUrl/api/yt/list');
-      // 🌟 防御性解析
-      if (r.data is String) {
-        try {
-          final decoded = jsonDecode(r.data);
-          if (decoded is List) return decoded;
-        } catch (_) {}
-      } else if (r.data is List) {
-        return r.data;
-      }
-    } catch (e) {
-      debugPrint("获取YT列表失败: $e");
-    }
+    // 因为现在交给 qBittorrent 下载了，任务会直接显示在 BT 列表里。
+    // 这个接口保留返回空数组，防止旧代码报错
     return [];
   }
-
-  // ==========================================
-  // --- 🌟 GitHub OTA 热更新探针 ---
-  // ==========================================
 
   static Future<Map<String, dynamic>?> checkAppUpdate(String currentVersion) async {
     try {
@@ -1067,7 +1048,6 @@ class ApiService {
     return false;
   }
 
-  // 🌟 请求后端进行 AI 同声传译
   static Future<bool> requestTranslation(String torrentName) async {
     final prefs = await SharedPreferences.getInstance();
     final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
@@ -1079,7 +1059,7 @@ class ApiService {
         data: {'torrent_name': torrentName},
         options: Options(
           sendTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10), // 只等确认接收，不等翻译完成
+          receiveTimeout: const Duration(seconds: 10),
         ),
       );
       return r.statusCode == 200 || r.statusCode == 202;

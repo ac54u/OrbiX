@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import '../../core/utils.dart';
 import '../../core/constants.dart';
-import '../player_screen.dart'; // 🌟 请确保路径正确
+import '../player_screen.dart'; // 🌟 确保这个路径正确指向你的超级播放器
 
 class AddTorrentSheet extends StatefulWidget {
   const AddTorrentSheet({super.key});
@@ -66,19 +66,19 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
   void _showYouTubeActionSheet(String url) {
     showCupertinoModalPopup(
       context: context,
-      builder: (BuildContext context) => CupertinoActionSheet(
+      builder: (BuildContext sheetContext) => CupertinoActionSheet(
         title: const Text('检测到 YouTube 链接'),
         message: const Text('请选择您要执行的操作'),
         actions: <CupertinoActionSheetAction>[
           CupertinoActionSheetAction(
-            child: const Text('▶️ 手机直接播放'),
+            child: const Text('▶️ 手机直接播放 (秒开绕风控)'),
             onPressed: () {
-              Navigator.pop(context); // 关掉 ActionSheet
-              Navigator.pop(this.context); // 关掉当前的“添加任务”弹窗
+              Navigator.pop(sheetContext); // 关掉 ActionSheet
+              Navigator.pop(context); // 关掉当前的“添加任务”弹窗
 
-              // 推入播放器
+              // 🚀 直接推入前端直解播放器
               Navigator.push(
-                this.context,
+                context,
                 MaterialPageRoute(
                   builder: (context) => PlayerScreen(
                     streamUrl: url,
@@ -89,20 +89,21 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
             },
           ),
           CupertinoActionSheetAction(
-            child: const Text('☁️ 下载到服务器 (最高画质)'),
+            child: const Text('☁️ 下载到服务器 (推给 qB 拿 4K)'),
             onPressed: () async {
-              Navigator.pop(context); // 关掉 ActionSheet
-              setState(() => _isSubmitting = true);
+              Navigator.pop(sheetContext); // 关掉 ActionSheet
+              setState(() => _isSubmitting = true); // 让主面板转圈圈
 
-              Utils.showToast("正在提交服务器解析并下载...");
+              Utils.showToast("正在呼叫 Cobalt 引擎解析...");
 
-              // 🌟 调用你 api_service.dart 里的全新接口
+              // 🌟 调用 api_service 里的全新接口，将直链推给 qBittorrent
               String? errorMsg = await ApiService.addYoutubeTask(url);
 
+              if (!mounted) return; // 🛡️ 异步安全检查：防止等待期间用户关掉弹窗导致崩溃
               setState(() => _isSubmitting = false);
 
               if (errorMsg == null) {
-                _handleSuccess(true, null, customMsg: "YouTube 下载已推送到服务器！");
+                _handleSuccess(true, null, customMsg: "解析成功！已推送至 qBittorrent");
               } else {
                 _handleSuccess(false, null, customMsg: errorMsg);
               }
@@ -112,7 +113,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
         cancelButton: CupertinoActionSheetAction(
           isDestructiveAction: true,
           onPressed: () {
-            Navigator.pop(context);
+            Navigator.pop(sheetContext);
           },
           child: const Text('取消'),
         ),
@@ -161,6 +162,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
           category: cat,
           tags: tags,
         );
+        if (!mounted) return;
         setState(() => _isSubmitting = false);
         _handleSuccess(success, defaultPath);
       }
@@ -179,6 +181,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
         category: cat,
         tags: tags,
       );
+      if (!mounted) return;
       setState(() => _isSubmitting = false);
       _handleSuccess(success, defaultPath);
     }
