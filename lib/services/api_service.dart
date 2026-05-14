@@ -118,7 +118,15 @@ class ApiService {
         queryParameters: query,
         options: opts,
       );
-      if (r.data is String) return jsonDecode(r.data);
+
+      // 🌟 防御性解析增强
+      if (r.data is String) {
+        try {
+          return jsonDecode(r.data);
+        } catch (_) {
+          return null;
+        }
+      }
       return r.data;
     } catch (e) {
       return null;
@@ -135,6 +143,13 @@ class ApiService {
         queryParameters: {'hash': hash},
         options: opts,
       );
+      if (response.data is String) {
+        try {
+          return jsonDecode(response.data);
+        } catch (_) {
+          return [];
+        }
+      }
       return response.data as List<dynamic>;
     } catch (e) {
       return [];
@@ -322,6 +337,9 @@ class ApiService {
       final u = await _url();
       final opts = await _getOptions();
       final r = await _dio.get('$u/api/v2/sync/maindata', options: opts);
+      if (r.data is String) {
+        try { return jsonDecode(r.data); } catch (_) { return null; }
+      }
       return r.data;
     } catch (e) {
       return null;
@@ -334,6 +352,9 @@ class ApiService {
       final u = await _url();
       final opts = await _getOptions();
       final r = await _dio.get('$u/api/v2/torrents/categories', options: opts);
+      if (r.data is String) {
+        try { return jsonDecode(r.data) as Map<String, dynamic>; } catch (_) { return {}; }
+      }
       return r.data is Map ? r.data : {};
     } catch (e) {
       return {};
@@ -346,6 +367,9 @@ class ApiService {
       final u = await _url();
       final opts = await _getOptions();
       final r = await _dio.get('$u/api/v2/torrents/tags', options: opts);
+      if (r.data is String) {
+        try { return (jsonDecode(r.data) as List).map((e) => e.toString()).toList(); } catch (_) { return []; }
+      }
       return (r.data as List).map((e) => e.toString()).toList();
     } catch (e) {
       return [];
@@ -358,6 +382,9 @@ class ApiService {
       final u = await _url();
       final opts = await _getOptions();
       final r = await _dio.get('$u/api/v2/transfer/info', options: opts);
+      if (r.data is String) {
+         try { return jsonDecode(r.data); } catch (_) { return null; }
+      }
       return r.data;
     } catch (e) {
       return null;
@@ -401,6 +428,9 @@ class ApiService {
         '$u/api/v2/torrents/files?hash=$hash',
         options: opts,
       );
+      if (r.data is String) {
+         try { return jsonDecode(r.data); } catch (_) { return null; }
+      }
       return r.data;
     } catch (e) {
       return null;
@@ -416,6 +446,9 @@ class ApiService {
         '$u/api/v2/sync/torrentPeers?hash=$hash',
         options: opts,
       );
+      if (r.data is String) {
+         try { return jsonDecode(r.data); } catch (_) { return null; }
+      }
       return r.data;
     } catch (e) {
       return null;
@@ -450,6 +483,9 @@ class ApiService {
         },
         options: opts,
       );
+      if (r.data is String) {
+         try { return jsonDecode(r.data); } catch (_) { return []; }
+      }
       return r.data is List ? r.data : [];
     } catch (e) {
       return [];
@@ -535,6 +571,7 @@ class ApiService {
         queryParameters: {'query': query, 'type': 'search'},
         options: Options(headers: {'X-Api-Key': key}),
       );
+      if (r.data is String) return jsonDecode(r.data);
       return r.data;
     } catch (e) {
       throw "Prowlarr 连接失败";
@@ -559,8 +596,10 @@ class ApiService {
           if (year != null) 'year': year,
         },
       );
-      if (r.data['results'] != null && (r.data['results'] as List).isNotEmpty) {
-        return r.data['results'][0];
+
+      final data = r.data is String ? jsonDecode(r.data) : r.data;
+      if (data['results'] != null && (data['results'] as List).isNotEmpty) {
+        return data['results'][0];
       }
     } catch (e) {
       return null;
@@ -578,7 +617,8 @@ class ApiService {
         'https://api.themoviedb.org/3/movie/$id/credits',
         queryParameters: {'api_key': key},
       );
-      return (r.data['cast'] as List).take(10).toList();
+      final data = r.data is String ? jsonDecode(r.data) : r.data;
+      return (data['cast'] as List).take(10).toList();
     } catch (e) {
       return [];
     }
@@ -597,6 +637,7 @@ class ApiService {
         queryParameters: {'term': query},
         options: Options(headers: {'X-Api-Key': key}),
       );
+      if (r.data is String) return jsonDecode(r.data);
       return r.data;
     } catch (e) {
       throw "Radarr 连接失败: $e";
@@ -627,8 +668,9 @@ class ApiService {
         }
       );
 
-      if (response.statusCode == 200 && response.data['TotalRecordCount'] > 0) {
-        return response.data['Items'][0]['Id'].toString();
+      var data = response.data is String ? jsonDecode(response.data) : response.data;
+      if (response.statusCode == 200 && data['TotalRecordCount'] != null && data['TotalRecordCount'] > 0) {
+        return data['Items'][0]['Id'].toString();
       }
 
       // 🚀 尝试 2：自动降级为“片名模糊搜索”
@@ -641,8 +683,9 @@ class ApiService {
             'api_key': key,
           }
         );
-        if (response.statusCode == 200 && response.data['TotalRecordCount'] > 0) {
-          return response.data['Items'][0]['Id'].toString();
+        data = response.data is String ? jsonDecode(response.data) : response.data;
+        if (response.statusCode == 200 && data['TotalRecordCount'] != null && data['TotalRecordCount'] > 0) {
+          return data['Items'][0]['Id'].toString();
         }
       }
     } catch (e) {
@@ -709,12 +752,15 @@ class ApiService {
         options: Options(headers: {'X-Api-Key': key}),
       );
 
-      if ((profilesResp.data as List).isEmpty || (foldersResp.data as List).isEmpty) {
+      final pData = profilesResp.data is String ? jsonDecode(profilesResp.data) : profilesResp.data;
+      final fData = foldersResp.data is String ? jsonDecode(foldersResp.data) : foldersResp.data;
+
+      if ((pData as List).isEmpty || (fData as List).isEmpty) {
         throw "Radarr 端缺少基础配置(质量配置或根目录)";
       }
 
-      final profileId = profilesResp.data[0]['id'];
-      final rootPath = foldersResp.data[0]['path'];
+      final profileId = pData[0]['id'];
+      final rootPath = fData[0]['path'];
 
       final payload = {
         ...movieData,
@@ -756,6 +802,7 @@ class ApiService {
         queryParameters: {'term': query},
         options: Options(headers: {'X-Api-Key': key}),
       );
+      if (r.data is String) return jsonDecode(r.data);
       return r.data;
     } catch (e) {
       throw "Sonarr 连接失败: $e";
@@ -781,13 +828,17 @@ class ApiService {
         options: Options(headers: {'X-Api-Key': key}),
       );
 
-      if ((profilesResp.data as List).isEmpty || (foldersResp.data as List).isEmpty) {
+      final pData = profilesResp.data is String ? jsonDecode(profilesResp.data) : profilesResp.data;
+      final fData = foldersResp.data is String ? jsonDecode(foldersResp.data) : foldersResp.data;
+      final lData = languageResp.data is String ? jsonDecode(languageResp.data) : languageResp.data;
+
+      if ((pData as List).isEmpty || (fData as List).isEmpty) {
         throw "Sonarr 端缺少基础配置(质量配置或根目录)";
       }
 
-      final profileId = profilesResp.data[0]['id'];
-      final rootPath = foldersResp.data[0]['path'];
-      final languageProfileId = (languageResp.data as List).isNotEmpty ? languageResp.data[0]['id'] : 1;
+      final profileId = pData[0]['id'];
+      final rootPath = fData[0]['path'];
+      final languageProfileId = (lData as List).isNotEmpty ? lData[0]['id'] : 1;
 
       final payload = {
         ...seriesData,
@@ -828,6 +879,7 @@ class ApiService {
         queryParameters: {'movieId': movieId},
         options: Options(headers: {'X-Api-Key': key}),
       );
+      if (r.data is String) return jsonDecode(r.data);
       return r.data as List<dynamic>;
     } catch (e) {
       print("获取 Radarr Release 失败: $e");
@@ -865,8 +917,9 @@ class ApiService {
         options: Options(headers: {'X-Api-Key': key}),
       );
 
-      if ((checkResp.data as List).isNotEmpty) {
-        return checkResp.data[0]['id'];
+      final data = checkResp.data is String ? jsonDecode(checkResp.data) : checkResp.data;
+      if ((data as List).isNotEmpty) {
+        return data[0]['id'];
       }
 
       final tempMovieData = Map<String, dynamic>.from(movieData);
@@ -879,7 +932,8 @@ class ApiService {
           queryParameters: {'tmdbId': movieData['tmdbId']},
           options: Options(headers: {'X-Api-Key': key}),
         );
-        return recheck.data[0]['id'];
+        final reData = recheck.data is String ? jsonDecode(recheck.data) : recheck.data;
+        return reData[0]['id'];
       }
     } catch (e) {
       print("检查/添加电影失败: $e");
@@ -887,7 +941,7 @@ class ApiService {
     return null;
   }
 
-// 🌟 提交 YouTube 下载任务 (升级版：捕获真实报错)
+  // 🌟 提交 YouTube 下载任务 (升级版：彻底解决 String vs int index 报错)
   static Future<String?> addYoutubeTask(String url) async {
     final prefs = await SharedPreferences.getInstance();
     final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
@@ -900,14 +954,28 @@ class ApiService {
           'url': url,
           'save_dir': '/data/media/YouTube',
         },
-        options: Options(validateStatus: (status) => true), // 接收所有状态码，不直接抛异常
+        options: Options(validateStatus: (status) => true), // 接收所有状态码
       );
 
       if (r.statusCode == 200) {
         return null; // 成功返回 null
       } else {
-        // 如果后端报错，把后端的报错信息提取出来
-        return r.data['msg']?.toString() ?? "服务器返回错误: ${r.statusCode}";
+        // 🚨 核心修复：后端如果是 500/502，可能返回一个纯 HTML 字符串。
+        // 如果直接 r.data['msg'] 会导致 Dart 把 String 当 Map 从而引发类型错误崩溃
+        if (r.data is Map) {
+          return r.data['msg']?.toString() ?? "服务器返回错误: ${r.statusCode}";
+        } else if (r.data is String) {
+          // 尝试看看是不是 JSON 字符串
+          try {
+            final decoded = jsonDecode(r.data);
+            if (decoded is Map) {
+              return decoded['msg']?.toString() ?? "服务器返回错误: ${r.statusCode}";
+            }
+          } catch (_) {}
+          // 如果解析失败，说明是 HTML 或者不可预知的文本，直接返回原始状态码防御崩溃
+          return "服务器异常(${r.statusCode}): 接口未返回标准 JSON 数据";
+        }
+        return "未知错误，状态码: ${r.statusCode}";
       }
     } catch (e) {
       debugPrint("YouTube下载请求失败: $e");
@@ -923,12 +991,21 @@ class ApiService {
 
     try {
       final r = await _dio.get('$baseUrl/api/yt/list');
-      if (r.data is List) return r.data;
+      // 🌟 防御性解析
+      if (r.data is String) {
+        try {
+          final decoded = jsonDecode(r.data);
+          if (decoded is List) return decoded;
+        } catch (_) {}
+      } else if (r.data is List) {
+        return r.data;
+      }
     } catch (e) {
       debugPrint("获取YT列表失败: $e");
     }
     return [];
   }
+
   // ==========================================
   // --- 🌟 GitHub OTA 热更新探针 ---
   // ==========================================
@@ -942,29 +1019,32 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        String latestTag = response.data['tag_name']?.toString().replaceAll('v', '') ?? '';
-        String current = currentVersion.replaceAll('v', '');
+        final data = response.data is String ? jsonDecode(response.data) : response.data;
+        if (data is Map) {
+          String latestTag = data['tag_name']?.toString().replaceAll('v', '') ?? '';
+          String current = currentVersion.replaceAll('v', '');
 
-        if (_isNewerVersion(latestTag, current)) {
-          String downloadUrl = response.data['html_url'];
-          String ipaUrl = '';
+          if (_isNewerVersion(latestTag, current)) {
+            String downloadUrl = data['html_url'];
+            String ipaUrl = '';
 
-          if (response.data['assets'] != null) {
-            for (var asset in response.data['assets']) {
-              if (asset['name'].toString().endsWith('.ipa')) {
-                ipaUrl = asset['browser_download_url'];
-                break;
+            if (data['assets'] != null) {
+              for (var asset in data['assets']) {
+                if (asset['name'].toString().endsWith('.ipa')) {
+                  ipaUrl = asset['browser_download_url'];
+                  break;
+                }
               }
             }
-          }
 
-          return {
-            'hasUpdate': true,
-            'version': latestTag,
-            'notes': response.data['body'] ?? '常规细节优化与 Bug 修复。',
-            'ipaUrl': ipaUrl,
-            'url': downloadUrl,
-          };
+            return {
+              'hasUpdate': true,
+              'version': latestTag,
+              'notes': data['body'] ?? '常规细节优化与 Bug 修复。',
+              'ipaUrl': ipaUrl,
+              'url': downloadUrl,
+            };
+          }
         }
       }
     } catch (e) {
@@ -986,6 +1066,7 @@ class ApiService {
     } catch (_) {}
     return false;
   }
+
   // 🌟 请求后端进行 AI 同声传译
   static Future<bool> requestTranslation(String torrentName) async {
     final prefs = await SharedPreferences.getInstance();

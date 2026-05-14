@@ -627,7 +627,7 @@ Widget _buildTorrentItem(dynamic t, bool isDark) {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (hasPoster) ...[
+          if (hasPoster && posterUrl.isNotEmpty) ...[
             SizedBox(
               width: 76,
               height: 114,
