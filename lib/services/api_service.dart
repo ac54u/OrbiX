@@ -919,101 +919,80 @@ class ApiService {
   }
 
 // ==========================================
-  // 🌟 终极版：分布式高可用 Cobalt 节点轮询嗅探，彻底绕过封锁
+  // 🌟 终极掀桌子方案：Piped API 分布式代理中转下载 (彻底无视 YouTube 任何风控)
   // ==========================================
   static Future<String?> addYoutubeTask(String url) async {
-    // 🌟 顶级福利：精选的全球 Cobalt 野生公益节点池
-    // 只要有一个没被 YouTube 封锁，就能瞬间拿到直链！
-    final List<String> cobaltNodes = [
-      'https://co.eepy.moe/',
-      'https://cobalt.owo.network/',
-      'https://api.cobalt.bepass.org/',
-      'https://cobalt.cappuch.dev/',
-      'https://cobalt.kwiatektv.me/',
-      'https://api.cobalt.tools/' // 官方放最后垫底（虽然 YT 废了，但保不齐以后恢复）
-    ];
+    try {
+      // 1. 精准提取 YouTube Video ID
+      final RegExp regExp = RegExp(r'(?:v=|/)([0-9A-Za-z_-]{11}).*');
+      final match = regExp.firstMatch(url);
+      if (match == null) return "不是有效的 YouTube 链接";
+      final videoId = match.group(1);
 
-    final requestBody = jsonEncode({
-      'url': url
-    });
+      // 2. 🌟 全球高质量 Piped 开源代理节点池
+      final List<String> pipedApis = [
+        'https://pipedapi.kavin.rocks',
+        'https://pipedapi.tokhmi.xyz',
+        'https://pipedapi.smnz.de',
+        'https://api.piped.projectsegfau.lt'
+      ];
 
-    for (String nodeUrl in cobaltNodes) {
-      try {
-        debugPrint("🔍 正在嗅探野生节点: $nodeUrl");
-        final r = await _dio.post(
-          nodeUrl,
-          data: requestBody,
-          options: Options(
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15',
-            },
-            sendTimeout: const Duration(seconds: 8), // 设定超时，死了就赶紧切下一个
-            receiveTimeout: const Duration(seconds: 15),
-            validateStatus: (status) => true,
-          ),
-        );
+      for (String api in pipedApis) {
+        try {
+          debugPrint("🔍 正在请求 Piped 镜像节点: $api");
+          final r = await _dio.get(
+            '$api/streams/$videoId',
+            options: Options(
+              sendTimeout: const Duration(seconds: 5),
+              receiveTimeout: const Duration(seconds: 10),
+              validateStatus: (status) => true,
+            ),
+          );
 
-        if (r.statusCode == 200 && r.data != null) {
-          final data = r.data is String ? jsonDecode(r.data) : r.data;
+          if (r.statusCode == 200 && r.data != null && r.data['videoStreams'] != null) {
+            List streams = r.data['videoStreams'];
 
-          // 如果这个节点报 error，说明它也被 YouTube 封了，直接跳过试下一个节点
-          if (data['status'] == 'error' || data['status'] == 'stream') {
-             debugPrint("⚠️ 节点 $nodeUrl 被风控，切换下一个...");
-             continue;
-          }
+            // 🌟 核心：寻找包含画面和声音（videoOnly == false）的 mp4 格式流
+            // 默认抓取 720p/1080p 合并流，因为 Piped 提供的是已经封装好的完美文件
+            var validStreams = streams.where((s) =>
+                s['format'] == 'MPEG_4' &&
+                s['videoOnly'] == false
+            ).toList();
 
-          final downloadUrl = data['url'];
+            if (validStreams.isNotEmpty) {
+              // 按照质量 (bitrate) 降序排序，拿最高清的那个
+              validStreams.sort((a, b) => (b['bitrate'] ?? 0).compareTo(a['bitrate'] ?? 0));
 
-          if (downloadUrl != null && downloadUrl.toString().isNotEmpty) {
-            debugPrint("🎯 暴击！成功从节点 $nodeUrl 抢到直链！");
+              String proxyDownloadUrl = validStreams.first['url'];
 
-            // 拿到直链，下发给 qBittorrent
-            bool success = await addTorrent(
-              downloadUrl,
-              savePath: '/data/media/YouTube',
-              category: 'YouTube'
-            );
+              debugPrint("🎯 绝杀！拿到 Piped 中转直链，无视 IP 绑定，准备推送 qB...");
 
-            if (success) {
-              return null; // 完美推送到 qB，任务结束！
-            } else {
-              return "虽然解析成功，但推送给 qBittorrent 下载失败";
+              // 🚀 将这个『中转服务器』的链接扔给 qBittorrent
+              // qB 以为这就是个普通的 http 视频文件，直接满速开拉！
+              bool success = await addTorrent(
+                proxyDownloadUrl,
+                savePath: '/data/media/YouTube',
+                category: 'YouTube'
+              );
+
+              if (success) {
+                return null; // 完美收工！
+              } else {
+                return "代理地址提取成功，但推给 qB 时连接失败";
+              }
             }
           }
+        } catch (e) {
+          debugPrint("节点 $api 宕机，自动切换...");
+          continue;
         }
-      } catch (e) {
-        // 网络超时或节点宕机，安静地跳过，继续轮询
-        debugPrint("❌ 节点 $nodeUrl 宕机，跳过。");
-        continue;
       }
+
+      return "所有镜像节点均无响应，视频可能被彻底锁定。";
+    } catch (e) {
+      debugPrint("彻底崩溃: $e");
+      return "代码执行异常，请检查链接格式";
     }
-
-    // 如果把所有节点都试了一遍全都不行（极小概率）
-    return "解析失败：所有公共节点均被 YouTube 临时风控，请稍后再试或使用手机直播。";
-  }
-
-  // 🌟 备用降级方案：应对极个别特殊版本的 Cobalt API 路由
-  static Future<String?> _fallbackCobaltApi(String host, String url) async {
-      try {
-         final cobaltUrl = 'http://$host:9000/api/json';
-         final r = await _dio.post(
-          cobaltUrl,
-          data: {'url': url, 'vQuality': '1080'},
-          options: Options(headers: {'Accept': 'application/json'}, validateStatus: (status) => true),
-        );
-        if (r.statusCode == 200 && r.data != null) {
-            final data = r.data is String ? jsonDecode(r.data) : r.data;
-            if (data['url'] != null) {
-               await addTorrent(data['url'], savePath: '/data/media/YouTube', category: 'YouTube');
-               return null;
-            }
-        }
-        return "引擎路由 404 彻底无法匹配，请检查 Cobalt 镜像版本";
-      } catch(e) {
-         return "降级解析也失败了: $e";
-      }
   }
 
   // 🌟 (已废弃/兼容保留) 获取 YouTube 任务列表
