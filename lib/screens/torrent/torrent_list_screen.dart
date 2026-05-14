@@ -19,6 +19,7 @@ import 'torrent_detail_screen.dart';
 import 'add_torrent_sheet.dart';
 import '../../widgets/skeleton_card.dart';
 import '../player_screen.dart';
+import '../../services/metube_service.dart';
 
 class TorrentListScreen extends StatefulWidget {
   const TorrentListScreen({super.key});
