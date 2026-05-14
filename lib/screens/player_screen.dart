@@ -7,6 +7,11 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' hide Video;
+import 'package:shared_preferences/shared_preferences.dart';
+
+// 🌟 引入你的 API 和工具类以支持网络请求和弹窗
+import '../services/api_service.dart';
+import '../core/utils.dart';
 
 class PlayerScreen extends StatefulWidget {
   final String streamUrl;
@@ -33,6 +38,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _hasError = false;
   String _errorMsg = '';
   bool _isPreparing = true;
+  bool _isTranslating = false; // 🌟 新增：控制 AI 翻译按钮的转圈状态
 
   // UI 状态
   bool _showControls = true;
@@ -78,7 +84,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // 🌟🌟 核心魔法逻辑：前端硬解 YouTube / 播放服务器推流
   Future<void> _initializeUniversalPlayer() async {
-    // 🌟 如果是原始 YouTube 链接，走前端直解
     final isYouTube = widget.streamUrl.contains('youtube.com') || widget.streamUrl.contains('youtu.be');
 
     if (isYouTube) {
@@ -122,8 +127,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return;
       }
     } else {
-      // 🌟🌟 如果是服务器离线下载好的直连推流 (比如 /api/stream?token=...)
-      // 或者是普通的 Emby 视频源，直接走这里！
+      // 🌟🌟 播放服务器离线视频
       debugPrint("🎬 开始播放服务器推流媒体: ${widget.streamUrl}");
       try {
         await player.open(Media(widget.streamUrl));
@@ -182,6 +186,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _osdHideTimer = Timer(const Duration(seconds: 1), () {
       if (mounted) setState(() => _showOsd = false);
     });
+  }
+
+  // ==========================================
+  // 🌟🌟 核心：触发 DeepSeek AI 翻译逻辑
+  // ==========================================
+  Future<void> _triggerDeepSeekTranslation() async {
+    final isYouTube = widget.streamUrl.contains('youtube.com') || widget.streamUrl.contains('youtu.be');
+
+    if (isYouTube) {
+      Utils.showToast("YouTube 视频已默认挂载官方 AI 中文字幕！");
+      return;
+    }
+
+    setState(() => _isTranslating = true);
+    Utils.showToast("正在唤醒服务器 DeepSeek 引擎...");
+
+    // 呼叫后端提取视频音频并进行翻译
+    bool success = await ApiService.requestTranslation(widget.title);
+
+    if (mounted) {
+      setState(() => _isTranslating = false);
+    }
+
+    if (success) {
+      Utils.showToast("翻译完成！正在挂载中文字幕...");
+
+      // 假设服务器把翻译好的字幕托管在这个接口下
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
+        final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
+
+        // 拼接获取字幕的流媒体地址
+        final srtUrl = "$baseUrl/api/subtitle?torrent_name=${Uri.encodeComponent(widget.title)}";
+
+        // 强制播放器加载刚才生成的纯中文字幕
+        player.setSubtitleTrack(SubtitleTrack.uri(srtUrl, title: 'DeepSeek AI 中文', language: 'zh'));
+      } catch (e) {
+        debugPrint("挂载字幕失败: $e");
+      }
+    } else {
+      Utils.showToast("请求失败：服务器正忙或翻译接口异常");
+    }
   }
 
   @override
@@ -514,6 +561,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              // 🌟 新增：顶部的 AI 魔术棒翻译按钮
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: _isTranslating ? null : _triggerDeepSeekTranslation,
+                child: _isTranslating
+                    ? const CupertinoActivityIndicator(color: Colors.white)
+                    : const Icon(CupertinoIcons.wand_stars, color: Colors.white, size: 28),
               ),
             ],
           ),
