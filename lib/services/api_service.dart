@@ -919,49 +919,50 @@ class ApiService {
   }
 
   // ==========================================
-  // 🌟 终极版：调用 Cobalt 提取直链并推送 qBittorrent
+  // 🌟 终极版：调用 Cobalt 提取直链并推送 qBittorrent (已适配最新 API 路径)
   // ==========================================
   static Future<String?> addYoutubeTask(String url) async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // 提取服务器域名/IP，拼装出 Cobalt 的 9000 端口地址
-      // 例如：https://api.dmitt.com/api/sync -> http://api.dmitt.com:9000/api/json
       final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
       final host = Uri.parse(apiUrl).host;
-      final cobaltUrl = 'http://$host:9000/api/json';
 
-      // 1. 请求 Cobalt 解析 1080p/4K 直连地址
+      // 🌟 核心修复 1：使用 Cobalt 新版基础接口路径 (根目录)
+      final cobaltUrl = 'http://$host:9000/';
+
+      // 🌟 核心修复 2：新版 Cobalt 参数 (简化且不携带废弃字段)
       final r = await _dio.post(
         cobaltUrl,
         data: {
           'url': url,
-          'videoQuality': '1080', // Cobalt 内置参数，拿最高清的合并流
-          'filenameStyle': 'pretty',
-          'downloadMode': 'auto'
+          'videoQuality': '1080',
+          'isAudioOnly': false,
+          'filenameStyle': 'pretty'
         },
         options: Options(
           headers: {
             'Accept': 'application/json',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           },
-          validateStatus: (status) => true,
+          validateStatus: (status) => true, // 允许接收 404 等状态码以便排错
         ),
       );
+
+      debugPrint("Cobalt 返回状态码: ${r.statusCode}");
+      debugPrint("Cobalt 返回数据: ${r.data}");
 
       if (r.statusCode == 200 && r.data != null) {
         final data = r.data is String ? jsonDecode(r.data) : r.data;
 
-        if (data['status'] == 'error') {
-          return "Cobalt 引擎拦截: ${data['text']}";
+        if (data['status'] == 'error' || data['status'] == 'stream') {
+           return "Cobalt 引擎返回流媒体或拦截: ${data['text'] ?? '未知错误'}";
         }
 
-        // 提取到纯净的 mp4 直链
         final downloadUrl = data['url'];
 
         if (downloadUrl != null && downloadUrl.toString().isNotEmpty) {
-          // 2. 直接交给服务器的 qBittorrent 去下载！
-          // 由于这是直链，qB 会用普通的 HTTP 协议把它下载到 /data/media/YouTube
           bool success = await addTorrent(
             downloadUrl,
             savePath: '/data/media/YouTube',
@@ -969,25 +970,48 @@ class ApiService {
           );
 
           if (success) {
-            return null; // 成功
+            return null;
           } else {
             return "解析成功，但推送给 qBittorrent 下载失败";
           }
         }
-        return "未能获取有效下载链接";
+        return "未能从引擎获取有效下载链接";
+      } else if (r.statusCode == 404) {
+        // 如果根目录也报 404，尝试使用老版本路由作为最后的降级方案
+        return _fallbackCobaltApi(host, url);
       } else {
-        return "Cobalt 引擎请求失败 HTTP ${r.statusCode}";
+        return "Cobalt 引擎请求失败 HTTP ${r.statusCode}\n返回: ${r.data}";
       }
     } catch (e) {
       debugPrint("Cobalt 请求异常: $e");
-      return "引擎连接失败，请确认 Docker 已运行 cobalt";
+      return "引擎连接失败，请确认 Docker 已运行 cobalt 且 9000 端口开放";
     }
+  }
+
+  // 🌟 备用降级方案：应对极个别特殊版本的 Cobalt API 路由
+  static Future<String?> _fallbackCobaltApi(String host, String url) async {
+      try {
+         final cobaltUrl = 'http://$host:9000/api/json';
+         final r = await _dio.post(
+          cobaltUrl,
+          data: {'url': url, 'vQuality': '1080'},
+          options: Options(headers: {'Accept': 'application/json'}, validateStatus: (status) => true),
+        );
+        if (r.statusCode == 200 && r.data != null) {
+            final data = r.data is String ? jsonDecode(r.data) : r.data;
+            if (data['url'] != null) {
+               await addTorrent(data['url'], savePath: '/data/media/YouTube', category: 'YouTube');
+               return null;
+            }
+        }
+        return "引擎路由 404 彻底无法匹配，请检查 Cobalt 镜像版本";
+      } catch(e) {
+         return "降级解析也失败了: $e";
+      }
   }
 
   // 🌟 (已废弃/兼容保留) 获取 YouTube 任务列表
   static Future<List<dynamic>> getYtTorrents() async {
-    // 因为现在交给 qBittorrent 下载了，任务会直接显示在 BT 列表里。
-    // 这个接口保留返回空数组，防止旧代码报错
     return [];
   }
 
