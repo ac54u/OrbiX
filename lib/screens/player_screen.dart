@@ -6,7 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:screen_brightness/screen_brightness.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart'; // 🌟 引入魔法解析库
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' hide Video; // 🌟 引入魔法解析库
 
 class PlayerScreen extends StatefulWidget {
   final String streamUrl;
