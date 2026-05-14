@@ -5,9 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
+import '../../services/youtube_service.dart'; // 🌟 YouTube 服务
 import '../../core/utils.dart';
 import '../../core/constants.dart';
-import '../player_screen.dart'; // 🌟 确保这个路径正确指向你的超级播放器
+import '../player_screen.dart';
 
 class AddTorrentSheet extends StatefulWidget {
   const AddTorrentSheet({super.key});
@@ -62,7 +63,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
   }
 
-// 🌟 处理 YouTube 链接的专属 ActionSheet
+  // 🌟 处理 YouTube 链接的专属 ActionSheet
   void _showYouTubeActionSheet(String url) {
     showCupertinoModalPopup(
       context: context,
@@ -88,26 +89,10 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
             },
           ),
           CupertinoActionSheetAction(
-            // 🔧 修改了这里的文案
-            child: const Text('☁️ 下载到服务器 (推给 MeTube)'),
-            onPressed: () async {
+            child: const Text('☁️ 下载到服务器'),
+            onPressed: () {
               Navigator.pop(sheetContext);
-              setState(() => _isSubmitting = true);
-
-              Utils.showToast("正在呼叫 MeTube 引擎解析...");
-
-              // 🌟 这里的调用会触发刚才写好的 API
-              String? errorMsg = await MyTubeService.addDownloadTask(url);
-
-              if (!mounted) return;
-              setState(() => _isSubmitting = false);
-
-              if (errorMsg == null) {
-                // 成功后，视频会自动下载到你在 Docker 里映射的 /data/media/YouTube 目录
-                _handleSuccess(true, null, customMsg: "解析成功！已推送到 MeTube 后台下载");
-              } else {
-                _handleSuccess(false, null, customMsg: errorMsg);
-              }
+              _showYouTubeDownloadOptions(url);
             },
           ),
         ],
@@ -120,6 +105,78 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
         ),
       ),
     );
+  }
+
+  // 🌟 YouTube 下载格式选择
+  void _showYouTubeDownloadOptions(String url) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (BuildContext sheetContext) => CupertinoActionSheet(
+        title: const Text('选择下载格式'),
+        message: const Text('选择您想要的视频格式'),
+        actions: YouTubeDownloadService.getAvailableFormats()
+            .map((format) => CupertinoActionSheetAction(
+                  child: Text(
+                      YouTubeDownloadService.getFormatLabel(format)),
+                  onPressed: () async {
+                    Navigator.pop(sheetContext);
+                    await _downloadYouTubeVideo(url, format);
+                  },
+                ))
+            .toList(),
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () {
+            Navigator.pop(sheetContext);
+          },
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
+  // 🌟 执行 YouTube 下载
+  Future<void> _downloadYouTubeVideo(String url, String format) async {
+    setState(() => _isSubmitting = true);
+
+    Utils.showToast("正在启动下载...");
+
+    final taskId =
+        await YouTubeDownloadService.startDownload(url, format: format);
+
+    if (!mounted) return;
+
+    if (taskId != null) {
+      // 轮询直到完成
+      final completed =
+          await YouTubeDownloadService.pollUntilComplete(
+        taskId,
+        maxAttempts: 600, // 10分钟
+        onStatusChanged: (status) {
+          if (mounted) {
+            final progress = status['progress'] as int? ?? 0;
+            final statusStr = status['status'] as String? ?? 'processing';
+            print('[$taskId] 状态: $statusStr, 进度: $progress%');
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        if (completed) {
+          HapticFeedback.heavyImpact();
+          Utils.showToast("✅ 下载完成！文件已保存到服务器");
+          Navigator.pop(context); // 关闭弹窗
+        } else {
+          Utils.showToast("❌ 下载失败或超时");
+        }
+      }
+    } else {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        Utils.showToast("❌ 无法启动下载，请检查链接");
+      }
+    }
   }
 
   // 提交添加请求
@@ -135,20 +192,22 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
 
     bool success = false;
-    final cat = _categoryController.text.isNotEmpty ? _categoryController.text : null;
-    final tags = _tagsController.text.isNotEmpty ? _tagsController.text : null;
+    final cat =
+        _categoryController.text.isNotEmpty ? _categoryController.text : null;
+    final tags =
+        _tagsController.text.isNotEmpty ? _tagsController.text : null;
 
     if (_groupValue == 0) {
       // --- 添加链接 ---
       final url = _urlController.text.trim();
       if (url.isEmpty) {
-         Utils.showToast("请输入链接");
-         setState(() => _isSubmitting = false);
-         return;
+        Utils.showToast("请输入链接");
+        setState(() => _isSubmitting = false);
+        return;
       }
 
       // 🌟🌟 核心拦截逻辑：发现 YouTube，弹出选择菜单
-      if (url.contains('youtube.com') || url.contains('youtu.be')) {
+      if (YouTubeDownloadService.isYouTubeUrl(url)) {
         setState(() => _isSubmitting = false);
         _showYouTubeActionSheet(url);
         return;
@@ -167,7 +226,6 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
         setState(() => _isSubmitting = false);
         _handleSuccess(success, defaultPath);
       }
-
     } else {
       // --- 添加文件 (.torrent) ---
       if (_selectedFilePath == null) {
@@ -207,8 +265,10 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
+              border: Border(
+                  bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -218,13 +278,18 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                   child: const Text("取消"),
                   onPressed: () => Navigator.pop(context),
                 ),
-                Text("添加任务", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: textColor)),
+                Text("添加任务",
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 17,
+                        color: textColor)),
                 _isSubmitting
                     ? const CupertinoActivityIndicator()
                     : CupertinoButton(
                         padding: EdgeInsets.zero,
                         onPressed: _submit,
-                        child: const Text("添加", style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: const Text("添加",
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
               ],
             ),
@@ -242,8 +307,12 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                     child: CupertinoSlidingSegmentedControl<int>(
                       groupValue: _groupValue,
                       children: const {
-                        0: Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text("链接")),
-                        1: Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text("文件")),
+                        0: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Text("链接")),
+                        1: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Text("文件")),
                       },
                       onValueChanged: (v) {
                         setState(() => _groupValue = v ?? 0);
@@ -255,7 +324,8 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                   // 内容区域
                   if (_groupValue == 0) ...[
                     // --- 链接输入 ---
-                    const Text("种子或 YouTube 链接", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const Text("种子或 YouTube 链接",
+                        style: TextStyle(fontSize: 12, color: Colors.grey)),
                     const SizedBox(height: 8),
                     CupertinoTextField(
                       controller: _urlController,
@@ -271,19 +341,21 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                         padding: EdgeInsets.zero,
                         child: const Icon(CupertinoIcons.doc_on_clipboard),
                         onPressed: () async {
-                           final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
-                           if (data != null && data.text != null) {
-                             setState(() {
-                               _urlController.text = data.text!;
-                             });
-                             HapticFeedback.selectionClick();
-                           }
+                          final ClipboardData? data =
+                              await Clipboard.getData(Clipboard.kTextPlain);
+                          if (data != null && data.text != null) {
+                            setState(() {
+                              _urlController.text = data.text!;
+                            });
+                            HapticFeedback.selectionClick();
+                          }
                         },
                       ),
                     ),
                   ] else ...[
                     // --- 文件选择 ---
-                    const Text("种子文件", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const Text("种子文件",
+                        style: TextStyle(fontSize: 12, color: Colors.grey)),
                     const SizedBox(height: 8),
                     GestureDetector(
                       onTap: _pickFile,
@@ -292,24 +364,33 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                         decoration: BoxDecoration(
                           color: bgColor,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.withOpacity(0.3), style: BorderStyle.solid),
+                          border: Border.all(
+                              color: Colors.grey.withOpacity(0.3),
+                              style: BorderStyle.solid),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              _selectedFilePath == null ? CupertinoIcons.add : CupertinoIcons.doc_fill,
+                              _selectedFilePath == null
+                                  ? CupertinoIcons.add
+                                  : CupertinoIcons.doc_fill,
                               size: 32,
                               color: kPrimaryColor,
                             ),
                             const SizedBox(height: 8),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
                               child: Text(
-                                _selectedFilePath == null ? "点击选择 .torrent 文件" : _selectedFilePath!.split('/').last,
+                                _selectedFilePath == null
+                                    ? "点击选择 .torrent 文件"
+                                    : _selectedFilePath!.split('/').last,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: _selectedFilePath == null ? Colors.grey : textColor,
+                                  color: _selectedFilePath == null
+                                      ? Colors.grey
+                                      : textColor,
                                   fontSize: 14,
                                 ),
                               ),
@@ -321,7 +402,8 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                   ],
 
                   const SizedBox(height: 24),
-                  const Text("可选设置 (仅对种子生效)", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const Text("可选设置 (仅对种子生效)",
+                      style: TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 8),
 
                   // 选项组
@@ -332,8 +414,11 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                     ),
                     child: Column(
                       children: [
-                        _buildInputRow("分类", "点击输入", _categoryController, isLast: false, textColor: textColor),
-                        _buildInputRow("标签", "多个标签用逗号分隔", _tagsController, isLast: true, textColor: textColor),
+                        _buildInputRow("分类", "点击输入", _categoryController,
+                            isLast: false, textColor: textColor),
+                        _buildInputRow("标签", "多个标签用逗号分隔",
+                            _tagsController,
+                            isLast: true, textColor: textColor),
                       ],
                     ),
                   ),
@@ -342,20 +427,26 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      const Icon(CupertinoIcons.info_circle, size: 14, color: Colors.grey),
+                      const Icon(CupertinoIcons.info_circle,
+                          size: 14, color: Colors.grey),
                       const SizedBox(width: 4),
                       FutureBuilder<SharedPreferences>(
                         future: SharedPreferences.getInstance(),
                         builder: (context, snapshot) {
-                           String path = "默认路径";
-                           if (snapshot.hasData) {
-                             path = snapshot.data!.getString('default_path') ?? "默认路径";
-                             if (path.length > 25) path = "...${path.substring(path.length - 25)}";
-                           }
-                           return Text(
-                             "BT将保存到: $path",
-                             style: const TextStyle(fontSize: 12, color: Colors.grey),
-                           );
+                          String path = "默认路径";
+                          if (snapshot.hasData) {
+                            path = snapshot.data!.getString('default_path') ??
+                                "默认路径";
+                            if (path.length > 25) {
+                              path =
+                                  "...${path.substring(path.length - 25)}";
+                            }
+                          }
+                          return Text(
+                            "BT将保存到: $path",
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.grey),
+                          );
                         },
                       ),
                     ],
@@ -369,17 +460,26 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     );
   }
 
-  Widget _buildInputRow(String label, String placeholder, TextEditingController controller, {required bool isLast, required Color textColor}) {
+  Widget _buildInputRow(
+    String label,
+    String placeholder,
+    TextEditingController controller, {
+    required bool isLast,
+    required Color textColor,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        border: isLast ? null : Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
+        border: isLast
+            ? null
+            : Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
       ),
       child: Row(
         children: [
           SizedBox(
             width: 80,
-            child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
+            child: Text(label,
+                style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
           ),
           Expanded(
             child: CupertinoTextField(
