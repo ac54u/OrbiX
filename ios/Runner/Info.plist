@@ -37,7 +37,7 @@
 		</dict>
 	</array>
 
-	<!-- 🌟 这里是为你新增的第三方应用跳转白名单 🌟 -->
+	<!-- 🌟 第三方应用跳转白名单 -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>tips</string>
@@ -61,7 +61,7 @@
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientation Portrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
@@ -71,10 +71,61 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
+	<!-- 🌟 网络安全配置（YouTube 下载服务） -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- 允许所有 HTTP 连接 -->
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
+		
+		<!-- 🌟 特定域名配置（YouTube 下载服务器） -->
+		<key>NSExceptionDomains</key>
+		<dict>
+			<!-- 你的 YouTube 下载服务器 IP -->
+			<key>152.53.131.108</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSTemporaryExceptionMinimumTLSVersion</key>
+				<string>TLSv1.0</string>
+			</dict>
+			
+			<!-- YouTube 域名（直接播放） -->
+			<key>youtube.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+			</dict>
+			
+			<key>youtu.be</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+			</dict>
+		</dict>
 	</dict>
+
+	<!-- 🌟 本地网络访问权限（iOS 14+） -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_ytdownload._tcp</string>
+	</array>
+
+	<!-- 🌟 后台下载权限 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>应用需要访问本地网络以连接 YouTube 下载服务器</string>
+	
+	<key>NSBonjourServiceTypes</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
+
 </dict>
 </plist>
