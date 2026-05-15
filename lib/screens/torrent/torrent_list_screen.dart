@@ -15,8 +15,7 @@ import '../../core/utils.dart';
 import '../../services/api_service.dart';
 import '../../services/live_activity_service.dart';
 
-// 🌟 引入咱们刚刚写的全新后端服务
-import '../../services/youtube_api_service.dart'; 
+import '../../services/youtube_service.dart';
 
 import 'torrent_detail_screen.dart';
 import 'add_torrent_sheet.dart';
@@ -132,7 +131,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     ) ?? [];
 
     // 🌟 2. 从咱们全新的 FastAPI 后端抓取已下载完成的 YouTube 视频
-    final rawYtData = await YouTubeApiService.getFiles();
+    final rawYtData = await YouTubeDownloadService.getFiles();
 
     // 🌟 3. 数据“伪装”：把 FastAPI 返回的文件列表转换为 UI 能识别的结构
     final ytData = rawYtData.map((task) {
@@ -143,7 +142,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         'state': 'completed', 
         'is_yt': true,
         'size': task['size'],
-        'play_url': YouTubeApiService.getVideoUrl(task['url']) // 注入直连播放地址
+        'play_url': YouTubeDownloadService.getVideoUrl(task['url']) // 注入直连播放地址
       };
     }).toList();
 
@@ -200,7 +199,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         );
         if (confirm != true) return;
 
-        final success = await YouTubeApiService.deleteFile(target['name']);
+        final success = await YouTubeDownloadService.deleteFile(target['name']);
         if (success) {
           Utils.showToast("已删除视频");
           _fetchTorrents();
