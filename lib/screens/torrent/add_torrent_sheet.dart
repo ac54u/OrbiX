@@ -8,7 +8,6 @@ import '../../services/api_service.dart';
 import '../../services/youtube_service.dart'; // 🌟 YouTube 服务
 import '../../core/utils.dart';
 import '../../core/constants.dart';
-import '../player_screen.dart';
 
 class AddTorrentSheet extends StatefulWidget {
   const AddTorrentSheet({super.key});
@@ -63,61 +62,16 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
   }
 
-  // 🌟 处理 YouTube 链接的专属 ActionSheet
-  void _showYouTubeActionSheet(String url) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (BuildContext sheetContext) => CupertinoActionSheet(
-        title: const Text('检测到 YouTube 链接'),
-        message: const Text('请选择您要执行的操作'),
-        actions: <CupertinoActionSheetAction>[
-          CupertinoActionSheetAction(
-            child: const Text('▶️ 手机直接播放 (秒开绕风控)'),
-            onPressed: () {
-              Navigator.pop(sheetContext);
-              Navigator.pop(context);
-
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PlayerScreen(
-                    streamUrl: url,
-                    title: 'YouTube 视频',
-                  ),
-                ),
-              );
-            },
-          ),
-          CupertinoActionSheetAction(
-            child: const Text('☁️ 下载到服务器'),
-            onPressed: () {
-              Navigator.pop(sheetContext);
-              _showYouTubeDownloadOptions(url);
-            },
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          isDestructiveAction: true,
-          onPressed: () {
-            Navigator.pop(sheetContext);
-          },
-          child: const Text('取消'),
-        ),
-      ),
-    );
-  }
-
-  // 🌟 YouTube 下载格式选择
+  // 🌟 YouTube 下载格式选择 (直接跳过中间选择，直接选格式)
   void _showYouTubeDownloadOptions(String url) {
     showCupertinoModalPopup(
       context: context,
       builder: (BuildContext sheetContext) => CupertinoActionSheet(
-        title: const Text('选择下载格式'),
-        message: const Text('选择您想要的视频格式'),
+        title: const Text('检测到 YouTube 链接'),
+        message: const Text('请选择您想要的视频格式进行提取'),
         actions: YouTubeDownloadService.getAvailableFormats()
             .map((format) => CupertinoActionSheetAction(
-                  child: Text(
-                      YouTubeDownloadService.getFormatLabel(format)),
+                  child: Text(YouTubeDownloadService.getFormatLabel(format)),
                   onPressed: () async {
                     Navigator.pop(sheetContext);
                     await _downloadYouTubeVideo(url, format);
@@ -139,19 +93,17 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
   Future<void> _downloadYouTubeVideo(String url, String format) async {
     setState(() => _isSubmitting = true);
 
-    Utils.showToast("正在启动下载...");
+    Utils.showToast("正在启动后台提取任务...");
 
-    final taskId =
-        await YouTubeDownloadService.startDownload(url, format: format);
+    final taskId = await YouTubeDownloadService.startDownload(url, format: format);
 
     if (!mounted) return;
 
     if (taskId != null) {
       // 轮询直到完成
-      final completed =
-          await YouTubeDownloadService.pollUntilComplete(
+      final completed = await YouTubeDownloadService.pollUntilComplete(
         taskId,
-        maxAttempts: 600, // 10分钟
+        maxAttempts: 600, // 10分钟超时设定
         onStatusChanged: (status) {
           if (mounted) {
             final progress = status['progress'] as int? ?? 0;
@@ -165,16 +117,17 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
         setState(() => _isSubmitting = false);
         if (completed) {
           HapticFeedback.heavyImpact();
-          Utils.showToast("✅ 下载完成！文件已保存到服务器");
+          // 💡 引导用户去下载列表点击播放
+          Utils.showToast("✅ 提取完成！请前往我的下载列表点击播放");
           Navigator.pop(context); // 关闭弹窗
         } else {
-          Utils.showToast("❌ 下载失败或超时");
+          Utils.showToast("❌ 提取失败或处理超时");
         }
       }
     } else {
       if (mounted) {
         setState(() => _isSubmitting = false);
-        Utils.showToast("❌ 无法启动下载，请检查链接");
+        Utils.showToast("❌ 无法启动提取任务，请检查链接");
       }
     }
   }
@@ -192,10 +145,8 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
 
     bool success = false;
-    final cat =
-        _categoryController.text.isNotEmpty ? _categoryController.text : null;
-    final tags =
-        _tagsController.text.isNotEmpty ? _tagsController.text : null;
+    final cat = _categoryController.text.isNotEmpty ? _categoryController.text : null;
+    final tags = _tagsController.text.isNotEmpty ? _tagsController.text : null;
 
     if (_groupValue == 0) {
       // --- 添加链接 ---
@@ -206,10 +157,10 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
         return;
       }
 
-      // 🌟🌟 核心拦截逻辑：发现 YouTube，弹出选择菜单
+      // 🌟🌟 核心拦截逻辑：发现 YouTube 链接，直接弹出格式选择进行下载
       if (YouTubeDownloadService.isYouTubeUrl(url)) {
         setState(() => _isSubmitting = false);
-        _showYouTubeActionSheet(url);
+        _showYouTubeDownloadOptions(url);
         return;
       }
 
@@ -265,10 +216,8 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
-              border: Border(
-                  bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -380,8 +329,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                             ),
                             const SizedBox(height: 8),
                             Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
                               child: Text(
                                 _selectedFilePath == null
                                     ? "点击选择 .torrent 文件"
@@ -416,8 +364,7 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                       children: [
                         _buildInputRow("分类", "点击输入", _categoryController,
                             isLast: false, textColor: textColor),
-                        _buildInputRow("标签", "多个标签用逗号分隔",
-                            _tagsController,
+                        _buildInputRow("标签", "多个标签用逗号分隔", _tagsController,
                             isLast: true, textColor: textColor),
                       ],
                     ),
@@ -435,17 +382,14 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
                         builder: (context, snapshot) {
                           String path = "默认路径";
                           if (snapshot.hasData) {
-                            path = snapshot.data!.getString('default_path') ??
-                                "默认路径";
+                            path = snapshot.data!.getString('default_path') ?? "默认路径";
                             if (path.length > 25) {
-                              path =
-                                  "...${path.substring(path.length - 25)}";
+                              path = "...${path.substring(path.length - 25)}";
                             }
                           }
                           return Text(
                             "BT将保存到: $path",
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.grey),
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
                           );
                         },
                       ),
