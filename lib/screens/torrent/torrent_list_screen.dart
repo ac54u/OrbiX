@@ -15,11 +15,13 @@ import '../../core/utils.dart';
 import '../../services/api_service.dart';
 import '../../services/live_activity_service.dart';
 
+// 🌟 引入咱们刚刚写的全新后端服务
+import '../../services/youtube_api_service.dart'; 
+
 import 'torrent_detail_screen.dart';
 import 'add_torrent_sheet.dart';
 import '../../widgets/skeleton_card.dart';
 import '../player_screen.dart';
-import '../../services/metube_service.dart';
 
 class TorrentListScreen extends StatefulWidget {
   const TorrentListScreen({super.key});
@@ -97,7 +99,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       final hash = t['hash'];
       final rawName = t['name'] ?? '';
 
-      // 🌟 YouTube 任务不需要去 TMDB 刮削海报
+      // YouTube 任务不需要去 TMDB 刮削海报
       if (t['is_yt'] == true) continue;
 
       if (hash == null || rawName.isEmpty) continue;
@@ -122,45 +124,30 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 
   Future<void> _fetchTorrents() async {
-    // 🌟 1. 抓取原有的 BT 任务
+    // 1. 抓取原有的 BT 任务
     final btData = await ApiService.getTorrents(
       filter: _filterStatus == 'default' ? 'all' : _filterStatus,
       category: _filterCategory,
       tag: _filterTag,
     ) ?? [];
 
-    // 🌟 2. 抓取真实的 MeTube 下载任务
-    final rawYtData = await MeTubeService.getDownloads();
+    // 🌟 2. 从咱们全新的 FastAPI 后端抓取已下载完成的 YouTube 视频
+    final rawYtData = await YouTubeApiService.getFiles();
 
-    // 🌟 3. 数据“伪装”：把 MeTube 的数据格式转换成 UI 字典 (带容错)
+    // 🌟 3. 数据“伪装”：把 FastAPI 返回的文件列表转换为 UI 能识别的结构
     final ytData = rawYtData.map((task) {
-      try {
-        double percent = 0.0;
-        final status = task['status'] ?? 'unknown';
+      return {
+        'hash': 'yt_${task['filename'].hashCode}', 
+        'name': task['filename'],
+        'progress': 1.0, // 获取到的都是已完成的文件
+        'state': 'completed', 
+        'is_yt': true,
+        'size': task['size'],
+        'play_url': YouTubeApiService.getVideoUrl(task['url']) // 注入直连播放地址
+      };
+    }).toList();
 
-        // 🌟 致命修复：增加对 finished 状态的识别
-        final isDone = status == 'finished' || status == 'completed';
-
-        if (task['percent'] != null) {
-          percent = (double.tryParse(task['percent'].toString()) ?? 0.0) / 100.0;
-        } else if (isDone) {
-          percent = 1.0;
-        }
-
-        return {
-          'hash': 'metube_${task['id'] ?? task.hashCode}', // 兼容没有 id 的情况
-          'name': task['title'] ?? task['name'] ?? task['url'] ?? '未知视频任务',
-          'progress': percent,
-          'state': isDone ? 'completed' : 'downloading', // 强行转换为 UI 认识的 completed，让它变绿！
-          'is_yt': true,
-        };
-      } catch (e) {
-        debugPrint("❌ 单个视频任务解析失败: $e");
-        return null; // 如果某个任务格式稀烂，直接丢弃，不影响整体列表
-      }
-    }).where((element) => element != null).toList(); // 过滤掉解析失败的任务
-
-    // 🌟 4. 合并数据
+    // 4. 合并数据
     final List<dynamic> allData = [...btData, ...ytData];
 
     if (mounted) {
@@ -168,12 +155,15 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         final hash = t['hash'];
         final double progress = (t['progress'] ?? 0.0).toDouble();
         final double? prevProgress = _previousProgress[hash];
+        final bool isYt = t['is_yt'] == true;
 
         if (prevProgress != null && prevProgress < 1.0 && progress >= 1.0) {
           final name = t['name'] ?? '任务';
           HapticFeedback.heavyImpact();
-          Utils.showToast("🎉 [$name] 下载完成！正在通知 Emby...");
-          EmbyService.processAndRefresh(t['name']);
+          Utils.showToast("🎉 [$name] 下载完成！");
+          if (!isYt) {
+            EmbyService.processAndRefresh(t['name']);
+          }
           LiveActivityService.stop();
         }
 
@@ -193,6 +183,34 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 
   Future<void> _executeAction(String hash, String action) async {
+    // 🌟 识别是否是 YouTube 专属的删除操作
+    final target = _torrents.firstWhere((e) => e['hash'] == hash, orElse: () => null);
+    if (target != null && target['is_yt'] == true) {
+      if (action == 'delete' || action == 'deleteWithFiles') {
+        bool? confirm = await showCupertinoDialog(
+          context: context,
+          builder: (ctx) => CupertinoAlertDialog(
+            title: const Text("确认删除"),
+            content: const Text("确定要从服务器彻底删除这个视频吗？"),
+            actions: [
+              CupertinoDialogAction(child: const Text("取消"), onPressed: () => Navigator.pop(ctx, false)),
+              CupertinoDialogAction(isDestructiveAction: true, child: const Text("删除"), onPressed: () => Navigator.pop(ctx, true)),
+            ],
+          ),
+        );
+        if (confirm != true) return;
+
+        final success = await YouTubeApiService.deleteFile(target['name']);
+        if (success) {
+          Utils.showToast("已删除视频");
+          _fetchTorrents();
+        } else {
+          Utils.showToast("删除失败，请检查服务器");
+        }
+      }
+      return;
+    }
+
     if (action == 'delete' || action == 'deleteWithFiles') {
       bool? confirm = await showCupertinoDialog(
         context: context,
@@ -220,35 +238,20 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     HapticFeedback.mediumImpact();
     String? error;
     switch (action) {
-      case 'start':
-        error = await ApiService.controlTorrent(hash, 'start');
-        break;
-      case 'pause':
-        error = await ApiService.controlTorrent(hash, 'stop');
-        break;
-      case 'forceStart':
-        error = await ApiService.controlTorrent(hash, 'setForceStart');
-        break;
-      case 'forceRecheck':
-        error = await ApiService.controlTorrent(hash, 'recheck');
-        break;
-      case 'forceReannounce':
-        error = await ApiService.controlTorrent(hash, 'reannounce');
-        break;
-      case 'delete':
-        error = await ApiService.deleteTorrent(hash, false);
-        break;
-      case 'deleteWithFiles':
-        error = await ApiService.deleteTorrent(hash, true);
-        break;
+      case 'start': error = await ApiService.controlTorrent(hash, 'start'); break;
+      case 'pause': error = await ApiService.controlTorrent(hash, 'stop'); break;
+      case 'forceStart': error = await ApiService.controlTorrent(hash, 'setForceStart'); break;
+      case 'forceRecheck': error = await ApiService.controlTorrent(hash, 'recheck'); break;
+      case 'forceReannounce': error = await ApiService.controlTorrent(hash, 'reannounce'); break;
+      case 'delete': error = await ApiService.deleteTorrent(hash, false); break;
+      case 'deleteWithFiles': error = await ApiService.deleteTorrent(hash, true); break;
       case 'topPrio':
       case 'bottomPrio':
       case 'increasePrio':
       case 'decreasePrio':
         error = await ApiService.controlTorrent(hash, action);
         break;
-      default:
-        return;
+      default: return;
     }
 
     if (error != null) {
@@ -259,7 +262,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       _fetchTorrents();
 
       if (action == 'start' || action == 'forceStart') {
-        final target = _torrents.firstWhere((e) => e['hash'] == hash, orElse: () => null);
         final name = target != null ? target['name'] : '下载任务';
         LiveActivityService.start(name);
       } else if (action == 'pause' || action == 'delete' || action == 'deleteWithFiles') {
@@ -286,24 +288,32 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         ? (tmdbData['title'] ?? rawName)
         : rawName;
 
-    Utils.showToast("⚡ 正在建立物理直连通道...");
+    Utils.showToast("⚡ 正在建立视频通道...");
 
-    String? streamUrl = await ApiService.getDirectStreamUrl(rawName);
+    // 🌟 核心播放逻辑分离：YouTube 取自带直链，BT 去解析物理推流
+    String? streamUrl;
+    if (isYt) {
+      streamUrl = t['play_url']; // 走 FastAPI 的静态文件服务
+    } else {
+      streamUrl = await ApiService.getDirectStreamUrl(rawName);
+    }
 
     if (streamUrl != null && mounted) {
-      EmbyService.processAndRefresh(rawName).catchError((_) => false);
+      if (!isYt) {
+        EmbyService.processAndRefresh(rawName).catchError((_) => false);
+      }
 
       Navigator.push(
         context,
         CupertinoPageRoute(
           builder: (context) => PlayerScreen(
-            streamUrl: streamUrl,
+            streamUrl: streamUrl!,
             title: displayTitle,
           ),
         ),
       );
     } else {
-      Utils.showToast("❌ 无法获取物理推流通道");
+      Utils.showToast("❌ 无法获取播放链接");
     }
   }
 
@@ -440,7 +450,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   Widget _buildTorrentItem(dynamic t, bool isDark) {
     final hash = t['hash'] ?? '';
     final state = t['state'] ?? 'unknown';
-    final bool isYt = t['is_yt'] == true; // 🌟 核心判断
+    final bool isYt = t['is_yt'] == true; 
 
     bool isStopped =
         state.toLowerCase().contains('paused') ||
@@ -452,7 +462,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       child: CupertinoContextMenu(
         actions: [
-          // YouTube 任务屏蔽 qBittorrent 专属的启停校验操作
+          // YouTube 任务屏蔽 qBittorrent 专属的启停操作
           if (!isYt) ...[
             CupertinoContextMenuAction(
               trailingIcon: isStopped ? CupertinoIcons.play_arrow_solid : CupertinoIcons.pause_fill,
@@ -481,52 +491,51 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
               },
             ),
             Container(height: 1, color: CupertinoColors.systemGrey5),
+            CupertinoContextMenuAction(
+              trailingIcon: CupertinoIcons.wand_rays,
+              child: const Text("手动整理与入库"),
+              onPressed: () {
+                Navigator.pop(context);
+                final name = t['name'] ?? '';
+                if (name.isNotEmpty) {
+                  HapticFeedback.lightImpact();
+                  Utils.showToast("已发送整理指令: $name");
+                  EmbyService.processAndRefresh(name);
+                }
+              },
+            ),
+            CupertinoContextMenuAction(
+              trailingIcon: CupertinoIcons.wand_stars,
+              child: const Text("DeepSeek AI 翻译"),
+              onPressed: () async {
+                Navigator.pop(context);
+                final name = t['name'] ?? '';
+                if (name.isNotEmpty) {
+                  HapticFeedback.selectionClick();
+                  Utils.showToast("🚀 已请求 DeepSeek 翻译，请耐心等待...");
+
+                  final success = await ApiService.requestTranslation(name);
+                  if (success) {
+                    Utils.showToast("✅ 后端已开始处理，稍后播放即可加载中文字幕");
+                  } else {
+                    Utils.showToast("❌ 翻译请求失败，请检查后端状态");
+                  }
+                }
+              },
+            ),
+            Container(height: 1, color: CupertinoColors.systemGrey5),
           ],
 
           CupertinoContextMenuAction(
-            trailingIcon: CupertinoIcons.wand_rays,
-            child: const Text("手动整理与入库"),
+            isDestructiveAction: true,
+            trailingIcon: CupertinoIcons.trash,
+            child: Text(isYt ? "删除视频" : "删除任务"),
             onPressed: () {
               Navigator.pop(context);
-              final name = t['name'] ?? '';
-              if (name.isNotEmpty) {
-                HapticFeedback.lightImpact();
-                Utils.showToast("已发送整理指令: $name");
-                EmbyService.processAndRefresh(name);
-              }
+              _executeAction(hash, 'delete');
             },
           ),
-          CupertinoContextMenuAction(
-            trailingIcon: CupertinoIcons.wand_stars,
-            child: const Text("DeepSeek AI 翻译"),
-            onPressed: () async {
-              Navigator.pop(context);
-              final name = t['name'] ?? '';
-              if (name.isNotEmpty) {
-                HapticFeedback.selectionClick();
-                Utils.showToast("🚀 已请求 DeepSeek 翻译，请耐心等待...");
-
-                final success = await ApiService.requestTranslation(name);
-                if (success) {
-                  Utils.showToast("✅ 后端已开始处理，稍后播放即可加载中文字幕");
-                } else {
-                  Utils.showToast("❌ 翻译请求失败，请检查后端状态");
-                }
-              }
-            },
-          ),
-
-          if (!isYt) ...[
-            Container(height: 1, color: CupertinoColors.systemGrey5),
-            CupertinoContextMenuAction(
-              isDestructiveAction: true,
-              trailingIcon: CupertinoIcons.trash,
-              child: const Text("删除任务"),
-              onPressed: () {
-                Navigator.pop(context);
-                _executeAction(hash, 'delete');
-              },
-            ),
+          if (!isYt)
             CupertinoContextMenuAction(
               isDestructiveAction: true,
               trailingIcon: CupertinoIcons.trash_fill,
@@ -536,11 +545,10 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                 _executeAction(hash, 'deleteWithFiles');
               },
             ),
-          ]
         ],
         child: GestureDetector(
           onDoubleTap: () async {
-            if (isYt) return; // YouTube 视频不查 TMDB
+            if (isYt) return; 
 
             final rawName = t['name'] ?? '';
             if (rawName.isEmpty) return;
@@ -577,7 +585,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
           },
           onTap: () {
             if (isYt) {
-               _handlePlay(t); // YouTube 视频点击直接播放
+               _handlePlay(t); 
             } else {
               Navigator.of(context).push(
                 CupertinoPageRoute(
@@ -604,14 +612,14 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     icon: CupertinoIcons.play_rectangle_fill,
                     label: '播放',
                   ),
-                  if (!isYt) // 暂时隐藏 YT 任务的删除按钮
-                    SlidableAction(
-                      onPressed: (ctx) => _executeAction(hash, 'delete'),
-                      backgroundColor: const Color(0xFFFF3B30),
-                      foregroundColor: Colors.white,
-                      icon: CupertinoIcons.delete,
-                      label: '删除',
-                    ),
+                  // 🌟 核心解锁：YouTube 视频也可以右划删除了
+                  SlidableAction(
+                    onPressed: (ctx) => _executeAction(hash, 'delete'),
+                    backgroundColor: const Color(0xFFFF3B30),
+                    foregroundColor: Colors.white,
+                    icon: CupertinoIcons.delete,
+                    label: '删除',
+                  ),
                 ],
               ),
               child: _buildTorrentCard(t, isDark),
@@ -783,7 +791,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      // 🌟 新增：YouTube 专属红色标签
+                      // 🌟 勋章也帮你改成了 VideoDL / YouTube 专属标识
                       if (isYt)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -796,7 +804,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                             children: const [
                               Icon(CupertinoIcons.play_rectangle_fill, color: Colors.red, size: 10),
                               SizedBox(width: 3),
-                              Text('MeTube', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+                              Text('YouTube', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
@@ -874,7 +882,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                              size: 14,
                              color: isYt ? Colors.red : const Color(0xFFFF9500)),
                         const SizedBox(width: 4),
-                        Text(isYt ? 'MeTube' : (t['ratio'] ?? 0).toStringAsFixed(2), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text(isYt ? 'VideoDL API' : (t['ratio'] ?? 0).toStringAsFixed(2), style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                     Row(
