@@ -89,46 +89,25 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     );
   }
 
-  // 🌟 执行 YouTube 下载
+  // 🌟 执行 YouTube 下载 (全新体验：后台排队+秒关弹窗版)
   Future<void> _downloadYouTubeVideo(String url, String format) async {
     setState(() => _isSubmitting = true);
 
-    Utils.showToast("正在启动后台提取任务...");
+    Utils.showToast("正在向服务器发送任务...");
 
+    // 只负责发请求，拿到 taskId 就算成功
     final taskId = await YouTubeDownloadService.startDownload(url, format: format);
 
     if (!mounted) return;
+    setState(() => _isSubmitting = false);
 
     if (taskId != null) {
-      // 轮询直到完成
-      final completed = await YouTubeDownloadService.pollUntilComplete(
-        taskId,
-        maxAttempts: 600, // 10分钟超时设定
-        onStatusChanged: (status) {
-          if (mounted) {
-            final progress = status['progress'] as int? ?? 0;
-            final statusStr = status['status'] as String? ?? 'processing';
-            print('[$taskId] 状态: $statusStr, 进度: $progress%');
-          }
-        },
-      );
-
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-        if (completed) {
-          HapticFeedback.heavyImpact();
-          // 💡 引导用户去下载列表点击播放
-          Utils.showToast("✅ 提取完成！请前往我的下载列表点击播放");
-          Navigator.pop(context); // 关闭弹窗
-        } else {
-          Utils.showToast("❌ 提取失败或处理超时");
-        }
-      }
+      HapticFeedback.heavyImpact();
+      Utils.showToast("✅ 任务已加入后台，进度请查看列表");
+      // 🌟 核心：不等下载完成，直接秒关弹窗！
+      Navigator.pop(context); 
     } else {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-        Utils.showToast("❌ 无法启动提取任务，请检查链接");
-      }
+      Utils.showToast("❌ 无法启动提取任务，请检查网络或链接");
     }
   }
 
