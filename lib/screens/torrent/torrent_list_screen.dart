@@ -143,8 +143,9 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         'is_yt': true,
         'size': task['size'] ?? 0,
         'poster_url': task['thumbnail'] ?? '', // 挂载 YouTube 官方高清封面图
+        // ✅ 这里修复了致命 Bug：将 task['filename'] 改为了 task['url']
         'play_url': task['status'] == 'completed' 
-            ? YouTubeDownloadService.getVideoUrl(task['filename']) 
+            ? YouTubeDownloadService.getVideoUrl(task['url']) 
             : null
       };
     }).toList();
@@ -622,7 +623,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     icon: CupertinoIcons.play_rectangle_fill,
                     label: '播放',
                   ),
-                  // 🌟 核心解锁：YouTube 视频也可以右划删除了
                   SlidableAction(
                     onPressed: (ctx) => _executeAction(hash, 'delete'),
                     backgroundColor: const Color(0xFFFF3B30),
@@ -667,7 +667,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       quality = '';
     }
 
-    // 🌟 提取海报的逻辑：合并 TMDB 与 YouTube
     final tmdbData = _tmdbCache[hash];
     final bool hasTmdbPoster = !isYt && tmdbData != null && tmdbData['status'] == 'success';
     final String ytPosterUrl = t['poster_url'] ?? '';
@@ -685,7 +684,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         children: [
           if (hasPoster && posterUrl.isNotEmpty) ...[
             SizedBox(
-              // 如果是 YouTube 海报（横版16:9），放宽一点让它显示更自然
               width: isYt ? 90 : 76,
               height: isYt ? 60 : 114,
               child: Stack(
@@ -805,7 +803,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      // 🌟 YouTube 专属红标
                       if (isYt)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -943,7 +940,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 }
 
-// --- FilterSheet 保持不变 ---
 class FilterSheet extends StatefulWidget {
   final String currentStatus;
   final String currentSort;
