@@ -4,12 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'dart:async';
-import 'dart:ui';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// 🌟 引入你的 API 和工具类以支持网络请求和弹窗
-import '../services/api_service.dart';
 import '../core/utils.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -25,19 +24,16 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   late final player = Player(
     configuration: const PlayerConfiguration(
-      // 🌟 增强网络流的缓冲能力，防止服务器推流时卡顿
-      bufferSize: 1024 * 1024 * 64, // 64MB 缓冲区
+      bufferSize: 1024 * 1024 * 64, 
     ),
   );
   late final controller = VideoController(player);
 
-  // 状态变量
   bool _hasError = false;
   String _errorMsg = '';
   bool _isPreparing = true;
-  bool _isTranslating = false; // 🌟 新增：控制 AI 翻译按钮的转圈状态
+  bool _isTranslating = false; 
 
-  // UI 状态
   bool _showControls = true;
   bool _isLocked = false;
   Timer? _hideTimer;
@@ -45,7 +41,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isDraggingProgress = false;
   double _dragProgressValue = 0.0;
 
-  // 手势状态
   double _volume = 50.0;
   double _brightness = 0.5;
   String _osdType = '';
@@ -65,7 +60,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
     player.stream.error.listen((error) {
-      debugPrint("🚨 播放器底层报错: $error");
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -79,15 +73,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _initializeUniversalPlayer();
   }
 
-  // 🌟🌟 核心播放逻辑：统一接收后端直链
   Future<void> _initializeUniversalPlayer() async {
     try {
-      debugPrint("🎬 开始播放视频直链: ${widget.streamUrl}");
-      
       await player.open(Media(
         widget.streamUrl,
         httpHeaders: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
       ));
 
@@ -100,7 +91,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMsg = "视频流加载失败，请检查网络或服务器: $e";
+          _errorMsg = "加载失败: $e";
           _isPreparing = false;
         });
       }
@@ -145,39 +136,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // ==========================================
-  // 🌟🌟 核心：触发 DeepSeek AI 翻译逻辑
-  // ==========================================
+  // 🌟 核心：直连 DeepSeek 翻译接口
   Future<void> _triggerDeepSeekTranslation() async {
     setState(() => _isTranslating = true);
-    Utils.showToast("正在唤醒服务器 DeepSeek 引擎...");
+    Utils.showToast("🚀 正在呼叫 DeepSeek 提取并翻译...");
 
-    // 呼叫后端提取视频音频并进行翻译
-    bool success = await ApiService.requestTranslation(widget.title);
-
-    if (mounted) {
-      setState(() => _isTranslating = false);
-    }
-
-    if (success) {
-      Utils.showToast("翻译完成！正在挂载中文字幕...");
-
-      // 假设服务器把翻译好的字幕托管在这个接口下
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
-        final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
-
-        // 拼接获取字幕的流媒体地址
-        final srtUrl = "$baseUrl/api/subtitle?torrent_name=${Uri.encodeComponent(widget.title)}";
-
-        // 强制播放器加载刚才生成的纯中文字幕
-        player.setSubtitleTrack(SubtitleTrack.uri(srtUrl, title: 'DeepSeek AI 中文', language: 'zh'));
-      } catch (e) {
-        debugPrint("挂载字幕失败: $e");
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final baseUrl = prefs.getString('api_base_url') ?? '[http://152.53.131.108:9000](http://152.53.131.108:9000)';
+      
+      // 注意：由于后端需要原始 YouTube url 才能提取字幕，我们暂时把视频直链当作参数。
+      // 如果视频文件名能唯一匹配，后端已经通过标题名称找到了对应字幕。
+      final requestUrl = "$baseUrl/api/subtitle/generate?url=${Uri.encodeComponent(widget.streamUrl)}";
+      
+      final response = await http.get(Uri.parse(requestUrl));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        if (data['status'] == 'success') {
+          final srtUrl = baseUrl + data['url'];
+          Utils.showToast("✅ AI 翻译完成！正在挂载...");
+          await player.setSubtitleTrack(SubtitleTrack.uri(srtUrl, title: 'DeepSeek 中文', language: 'zh'));
+        } else {
+          Utils.showToast("❌ 翻译失败: ${data['detail']}");
+        }
+      } else {
+        Utils.showToast("❌ 请求失败，可能没有英文字幕");
       }
-    } else {
-      Utils.showToast("请求失败：服务器正忙或翻译接口异常");
+    } catch (e) {
+      Utils.showToast("❌ 网络错误: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isTranslating = false);
+      }
     }
   }
 
@@ -203,13 +194,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
               controller: controller,
               fit: _videoFit,
               fill: Colors.transparent,
+              // 🌟 Netflix 样式黄字黑边字幕，强制沉底
               subtitleViewConfiguration: const SubtitleViewConfiguration(
                 style: TextStyle(
-                  fontSize: 24,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  shadows: [Shadow(offset: Offset(1, 1), blurRadius: 4, color: Colors.black)],
+                  fontSize: 26, 
+                  color: Color(0xFFFFE500),
+                  fontWeight: FontWeight.w900,
+                  shadows: [
+                    Shadow(offset: Offset(2, 2), blurRadius: 4, color: Colors.black),
+                    Shadow(offset: Offset(-1, -1), blurRadius: 2, color: Colors.black),
+                  ],
                 ),
+                textAlign: TextAlign.center,
+                padding: EdgeInsets.only(bottom: 30), 
               ),
             ),
           ),
@@ -415,35 +412,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           child: isBuffering
-              ? ClipRRect(
+              ? Container(
                   key: const ValueKey('buffering'),
-                  borderRadius: BorderRadius.circular(16),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.55),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white10, width: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.55),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white10, width: 1),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CupertinoActivityIndicator(radius: 16, color: Colors.white),
+                      SizedBox(height: 14),
+                      Text(
+                        "正在缓冲...",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.5,
+                        ),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          CupertinoActivityIndicator(radius: 16, color: Colors.white),
-                          SizedBox(height: 14),
-                          Text(
-                            "正在缓冲...",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 )
               : CupertinoButton(
@@ -476,136 +467,132 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  // 🌟 纯净黑色渐变顶部栏
   Widget _buildTopBar() {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          height: 80,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+    return Container(
+      height: 90, 
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.black87, Colors.transparent], 
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            child: const Icon(CupertinoIcons.back, color: Colors.white, size: 28),
+            onPressed: () => Navigator.pop(context),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                widget.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 4)], 
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
-          child: Row(
-            children: [
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                child: const Icon(CupertinoIcons.back, color: Colors.white, size: 28),
-                onPressed: () => Navigator.pop(context),
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              // 🌟 顶部的 AI 魔术棒翻译按钮保留，无论是 YouTube 还是 BT 都可以一键请求
-              CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: _isTranslating ? null : _triggerDeepSeekTranslation,
-                child: _isTranslating
-                    ? const CupertinoActivityIndicator(color: Colors.white)
-                    : const Icon(CupertinoIcons.wand_stars, color: Colors.white, size: 28),
-              ),
-            ],
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: _isTranslating ? null : _triggerDeepSeekTranslation,
+            child: _isTranslating
+                ? const CupertinoActivityIndicator(color: Colors.white)
+                : const Icon(CupertinoIcons.captions_bubble_fill, color: Colors.white, size: 28),
           ),
-        ),
+        ],
       ),
     );
   }
 
+  // 🌟 纯净黑色渐变底部栏
   Widget _buildBottomBar() {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(30, 20, 30, 40),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [Colors.black.withOpacity(0.7), Colors.transparent],
-            ),
-          ),
-          child: StreamBuilder(
-            stream: player.stream.position,
-            builder: (context, pos) {
-              final realPosition = pos.data ?? Duration.zero;
-              final duration = player.state.duration;
-
-              final currentSliderValue = _isDraggingProgress ? _dragProgressValue : realPosition.inSeconds.toDouble();
-              final maxSliderValue = duration.inSeconds.toDouble().clamp(0.01, double.infinity);
-
-              return Row(
-                children: [
-                  Text(_formatDuration(Duration(seconds: currentSliderValue.toInt())),
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Courier')),
-                  Expanded(
-                    child: CupertinoSlider(
-                      value: currentSliderValue.clamp(0.0, maxSliderValue),
-                      max: maxSliderValue,
-                      activeColor: Colors.white,
-                      thumbColor: Colors.white,
-                      onChangeStart: (v) {
-                        setState(() {
-                          _isDraggingProgress = true;
-                          _dragProgressValue = v;
-                        });
-                        _hideTimer?.cancel();
-                      },
-                      onChanged: (v) => setState(() => _dragProgressValue = v),
-                      onChangeEnd: (v) {
-                        HapticFeedback.selectionClick();
-                        player.seek(Duration(seconds: v.toInt()));
-                        setState(() => _isDraggingProgress = false);
-                        _startHideTimer();
-                      },
-                    ),
-                  ),
-                  Text(_formatDuration(duration),
-                      style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Courier')),
-                  const SizedBox(width: 20),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minSize: 30,
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      setState(() {
-                        if (_videoFit == BoxFit.contain) {
-                          _videoFit = BoxFit.cover;
-                        } else if (_videoFit == BoxFit.cover) {
-                          _videoFit = BoxFit.fill;
-                        } else {
-                          _videoFit = BoxFit.contain;
-                        }
-                      });
-                      _startHideTimer();
-                    },
-                    child: Icon(
-                      _videoFit == BoxFit.contain
-                          ? CupertinoIcons.rectangle_expand_vertical
-                          : CupertinoIcons.rectangle_arrow_up_right_arrow_down_left,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(30, 40, 30, 40),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Colors.black87, Colors.transparent],
         ),
+      ),
+      child: StreamBuilder(
+        stream: player.stream.position,
+        builder: (context, pos) {
+          final realPosition = pos.data ?? Duration.zero;
+          final duration = player.state.duration;
+
+          final currentSliderValue = _isDraggingProgress ? _dragProgressValue : realPosition.inSeconds.toDouble();
+          final maxSliderValue = duration.inSeconds.toDouble().clamp(0.01, double.infinity);
+
+          return Row(
+            children: [
+              Text(_formatDuration(Duration(seconds: currentSliderValue.toInt())),
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Courier')),
+              Expanded(
+                child: CupertinoSlider(
+                  value: currentSliderValue.clamp(0.0, maxSliderValue),
+                  max: maxSliderValue,
+                  activeColor: Colors.redAccent, 
+                  thumbColor: Colors.white,
+                  onChangeStart: (v) {
+                    setState(() {
+                      _isDraggingProgress = true;
+                      _dragProgressValue = v;
+                    });
+                    _hideTimer?.cancel();
+                  },
+                  onChanged: (v) => setState(() => _dragProgressValue = v),
+                  onChangeEnd: (v) {
+                    HapticFeedback.selectionClick();
+                    player.seek(Duration(seconds: v.toInt()));
+                    setState(() => _isDraggingProgress = false);
+                    _startHideTimer();
+                  },
+                ),
+              ),
+              Text(_formatDuration(duration),
+                  style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Courier')),
+              const SizedBox(width: 20),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minSize: 30,
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  setState(() {
+                    if (_videoFit == BoxFit.contain) {
+                      _videoFit = BoxFit.cover;
+                    } else if (_videoFit == BoxFit.cover) {
+                      _videoFit = BoxFit.fill;
+                    } else {
+                      _videoFit = BoxFit.contain;
+                    }
+                  });
+                  _startHideTimer();
+                },
+                child: Icon(
+                  _videoFit == BoxFit.contain
+                      ? CupertinoIcons.rectangle_expand_vertical
+                      : CupertinoIcons.rectangle_arrow_up_right_arrow_down_left,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
