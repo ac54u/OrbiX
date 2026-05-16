@@ -24,7 +24,7 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   late final player = Player(
     configuration: const PlayerConfiguration(
-      bufferSize: 1024 * 1024 * 64, // 64MB 缓冲区，防卡顿
+      bufferSize: 1024 * 1024 * 64, // 64MB 核心网络流缓冲区
     ),
   );
   late final controller = VideoController(player);
@@ -83,6 +83,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ));
 
       player.setVolume(_volume);
+
+      // 🌟 修复：进入播放器时，自动去服务器探测是不是已经有翻译好的字幕了！
+      _autoLoadSubtitle();
+
       if (mounted) {
         setState(() => _isPreparing = false);
         _startHideTimer();
@@ -91,10 +95,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMsg = "加载失败: $e";
+          _errorMsg = "视频加载失败: $e";
           _isPreparing = false;
         });
       }
+    }
+  }
+
+  // 🌟 核心：后台静默探测已有字幕，有的直接挂载，杜绝“只有第一次观看才有”
+  Future<void> _autoLoadSubtitle() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawBaseUrl = prefs.getString('api_base_url') ?? '[http://152.53.131.108:9000](http://152.53.131.108:9000)';
+      final baseUrl = rawBaseUrl.trim().replaceAll(RegExp(r'\[|\]|\(|\)'), '');
+      
+      final srtUrl = "$baseUrl/videos/${Uri.encodeComponent(widget.title.replaceAll(".mp4", ""))}.vtt";
+      
+      // 使用 HTTP HEAD 请求（只探测文件头，不耗费流量）
+      final response = await http.head(Uri.parse(srtUrl));
+      if (response.statusCode == 200 || response.statusCode == 206) {
+        debugPrint("✅ 探测到已有字幕，后台自动挂载中...");
+        await player.setSubtitleTrack(SubtitleTrack.uri(srtUrl, title: 'DeepSeek 中文', language: 'zh'));
+      }
+    } catch (e) {
+      debugPrint("探测字幕失败: $e");
     }
   }
 
@@ -136,35 +160,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // 🌟 核心：直连后端 DeepSeek 翻译接口，传递干净的 title
   Future<void> _triggerDeepSeekTranslation() async {
     setState(() => _isTranslating = true);
-    Utils.showToast("🚀 正在呼叫后端 DeepSeek 提取并翻译...");
+    Utils.showToast("🚀 正在探测/呼叫 AI 字幕...");
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      // 这里确保不会有 Markdown 格式混入，直接取配置或默认 IP
-      final baseUrl = prefs.getString('api_base_url') ?? 'http://152.53.131.108:9000';
+      final rawBaseUrl = prefs.getString('api_base_url') ?? '[http://152.53.131.108:9000](http://152.53.131.108:9000)';
+      final baseUrl = rawBaseUrl.trim().replaceAll(RegExp(r'\[|\]|\(|\)'), '');
       
-      // 传递视频标题，让后端去搜索原视频
       final requestUrl = "$baseUrl/api/subtitle/generate?title=${Uri.encodeComponent(widget.title)}";
-      
       final response = await http.get(Uri.parse(requestUrl));
       
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data['status'] == 'success') {
           final srtUrl = baseUrl + data['url'];
-          Utils.showToast("✅ AI 翻译完成！正在挂载...");
+          if (data['cached'] == true) {
+            Utils.showToast("⚡ 本地已有翻译，秒级挂载！");
+          } else {
+            Utils.showToast("✅ AI 翻译完成！正在挂载...");
+          }
           await player.setSubtitleTrack(SubtitleTrack.uri(srtUrl, title: 'DeepSeek 中文', language: 'zh'));
         } else {
           Utils.showToast("❌ 翻译失败: ${data['detail']}");
         }
       } else {
-        Utils.showToast("❌ 请求失败，可能未找到原视频英文字幕");
+        Utils.showToast("❌ 请求失败，原视频可能未提供英文字幕");
       }
     } catch (e) {
-      Utils.showToast("❌ 网络错误: $e");
+      Utils.showToast("❌ 网络通道异常: $e");
     } finally {
       if (mounted) {
         setState(() => _isTranslating = false);
@@ -194,19 +219,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
               controller: controller,
               fit: _videoFit,
               fill: Colors.transparent,
-              // 🌟 Netflix 样式黄字黑边字幕，强制沉底
+              // 🌟 修复：超级巨无霸 Netflix 样式字体！
               subtitleViewConfiguration: const SubtitleViewConfiguration(
                 style: TextStyle(
-                  fontSize: 26, 
+                  fontSize: 38, // ⬅️ 从26爆升至38！极其清晰
                   color: Color(0xFFFFE500),
                   fontWeight: FontWeight.w900,
                   shadows: [
-                    Shadow(offset: Offset(2, 2), blurRadius: 4, color: Colors.black),
-                    Shadow(offset: Offset(-1, -1), blurRadius: 2, color: Colors.black),
+                    Shadow(offset: Offset(3, 3), blurRadius: 6, color: Colors.black),
+                    Shadow(offset: Offset(-2, -2), blurRadius: 4, color: Colors.black),
                   ],
                 ),
                 textAlign: TextAlign.center,
-                padding: EdgeInsets.only(bottom: 30), 
+                padding: EdgeInsets.only(bottom: 40), 
               ),
             ),
           ),
@@ -230,15 +255,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
             GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: _handleScreenTap,
-              onDoubleTapDown: (details) {
+              onDoubleTapDown: (details) async {
                 if (_isLocked) return;
                 HapticFeedback.lightImpact();
                 final screenWidth = MediaQuery.of(context).size.width;
-                if (details.globalPosition.dx < screenWidth / 2) {
-                  player.seek(player.state.position - const Duration(seconds: 10));
-                } else {
-                  player.seek(player.state.position + const Duration(seconds: 10));
-                }
+                final target = details.globalPosition.dx < screenWidth / 2
+                    ? player.state.position - const Duration(seconds: 10)
+                    : player.state.position + const Duration(seconds: 10);
+                
+                // 🌟 修复：双击快进必须 await，强迫播放器彻底重算字幕轴
+                await player.seek(target);
                 _showOsdIndicator('seek');
               },
               onVerticalDragStart: (details) {
@@ -386,7 +412,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           children: [
             const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: Colors.redAccent, size: 36),
             const SizedBox(height: 12),
-            const Text("流媒体加载失败", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            const Text("流媒体通道加载失败", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             SizedBox(
               width: 250,
@@ -467,11 +493,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  // 🌟 纯净黑色渐变顶部栏
   Widget _buildTopBar() {
     return Container(
       height: 90, 
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -517,7 +542,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  // 🌟 纯净黑色渐变底部栏
   Widget _buildBottomBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(30, 40, 30, 40),
@@ -553,11 +577,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       _dragProgressValue = v;
                     });
                     _hideTimer?.cancel();
+                    
+                    // 🌟 修复：拖动大型网络流时，必须先将播放器暂停，断开 IO 通道防死锁！
+                    player.pause();
                   },
                   onChanged: (v) => setState(() => _dragProgressValue = v),
-                  onChangeEnd: (v) {
+                  onChangeEnd: (v) async {
                     HapticFeedback.selectionClick();
-                    player.seek(Duration(seconds: v.toInt()));
+                    
+                    // 🌟 修复：强制等进度条 Seek 彻底到位，强制刷新字幕树，然后再继续播放！
+                    await player.seek(Duration(seconds: v.toInt()));
+                    player.play();
+                    
                     setState(() => _isDraggingProgress = false);
                     _startHideTimer();
                   },
