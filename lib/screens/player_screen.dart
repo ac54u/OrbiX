@@ -24,7 +24,7 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   late final player = Player(
     configuration: const PlayerConfiguration(
-      bufferSize: 1024 * 1024 * 64, 
+      bufferSize: 1024 * 1024 * 64, // 64MB 缓冲区，防卡顿
     ),
   );
   late final controller = VideoController(player);
@@ -136,18 +136,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // 🌟 核心：直连 DeepSeek 翻译接口
+  // 🌟 核心：直连后端 DeepSeek 翻译接口，传递干净的 title
   Future<void> _triggerDeepSeekTranslation() async {
     setState(() => _isTranslating = true);
-    Utils.showToast("🚀 正在呼叫 DeepSeek 提取并翻译...");
+    Utils.showToast("🚀 正在呼叫后端 DeepSeek 提取并翻译...");
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final baseUrl = prefs.getString('api_base_url') ?? '[http://152.53.131.108:9000](http://152.53.131.108:9000)';
+      // 这里确保不会有 Markdown 格式混入，直接取配置或默认 IP
+      final baseUrl = prefs.getString('api_base_url') ?? 'http://152.53.131.108:9000';
       
-      // 注意：由于后端需要原始 YouTube url 才能提取字幕，我们暂时把视频直链当作参数。
-      // 如果视频文件名能唯一匹配，后端已经通过标题名称找到了对应字幕。
-      final requestUrl = "$baseUrl/api/subtitle/generate?url=${Uri.encodeComponent(widget.streamUrl)}";
+      // 传递视频标题，让后端去搜索原视频
+      final requestUrl = "$baseUrl/api/subtitle/generate?title=${Uri.encodeComponent(widget.title)}";
       
       final response = await http.get(Uri.parse(requestUrl));
       
@@ -161,7 +161,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           Utils.showToast("❌ 翻译失败: ${data['detail']}");
         }
       } else {
-        Utils.showToast("❌ 请求失败，可能没有英文字幕");
+        Utils.showToast("❌ 请求失败，可能未找到原视频英文字幕");
       }
     } catch (e) {
       Utils.showToast("❌ 网络错误: $e");
