@@ -130,19 +130,22 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       tag: _filterTag,
     ) ?? [];
 
-    // 🌟 2. 从咱们全新的 FastAPI 后端抓取已下载完成的 YouTube 视频
+    // 🌟 2. 从全新的 FastAPI 后端抓取 YouTube 任务 (包含下载中和已完成的)
     final rawYtData = await YouTubeDownloadService.getFiles();
 
-    // 🌟 3. 数据“伪装”：把 FastAPI 返回的文件列表转换为 UI 能识别的结构
+    // 🌟 3. 数据“伪装”：解析后端的 progress, status, thumbnail 映射为 UI 格式
     final ytData = rawYtData.map((task) {
       return {
-        'hash': 'yt_${task['filename'].hashCode}', 
+        'hash': task['id'] ?? 'yt_${task['filename'].hashCode}', 
         'name': task['filename'],
-        'progress': 1.0, // 获取到的都是已完成的文件
-        'state': 'completed', 
+        'progress': task['progress'] ?? 1.0, 
+        'state': task['status'] ?? 'completed', 
         'is_yt': true,
-        'size': task['size'],
-        'play_url': YouTubeDownloadService.getVideoUrl(task['url']) // 注入直连播放地址
+        'size': task['size'] ?? 0,
+        'poster_url': task['thumbnail'] ?? '', // 挂载 YouTube 官方高清封面图
+        'play_url': task['status'] == 'completed' 
+            ? YouTubeDownloadService.getVideoUrl(task['filename']) 
+            : null
       };
     }).toList();
 
@@ -199,7 +202,9 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         );
         if (confirm != true) return;
 
-        final success = await YouTubeDownloadService.deleteFile(target['name']);
+        // 如果还没下载完，后端其实会删掉临时任务。但保险起见还是用统一的文件删除API
+        final targetName = target['state'] == 'completed' ? target['name'] : target['hash'];
+        final success = await YouTubeDownloadService.deleteFile(targetName);
         if (success) {
           Utils.showToast("已删除视频");
           _fetchTorrents();
@@ -277,6 +282,12 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
 
     if (rawName.isEmpty) return;
 
+    // 🌟 YouTube 任务拦截：必须 completed 才能播放
+    if (isYt && t['state'] != 'completed') {
+      Utils.showToast("视频正在处理中，暂无法播放...");
+      return;
+    }
+
     if (!isYt && progress < 0.01) {
       Utils.showToast("缓冲中，请等待下载进度上升后再试");
       return;
@@ -292,7 +303,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     // 🌟 核心播放逻辑分离：YouTube 取自带直链，BT 去解析物理推流
     String? streamUrl;
     if (isYt) {
-      streamUrl = t['play_url']; // 走 FastAPI 的静态文件服务
+      streamUrl = t['play_url']; 
     } else {
       streamUrl = await ApiService.getDirectStreamUrl(rawName);
     }
@@ -656,9 +667,12 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       quality = '';
     }
 
+    // 🌟 提取海报的逻辑：合并 TMDB 与 YouTube
     final tmdbData = _tmdbCache[hash];
-    final bool hasPoster = !isYt && tmdbData != null && tmdbData['status'] == 'success';
-    final String posterUrl = hasPoster ? (tmdbData?['poster_url'] ?? '') : '';
+    final bool hasTmdbPoster = !isYt && tmdbData != null && tmdbData['status'] == 'success';
+    final String ytPosterUrl = t['poster_url'] ?? '';
+    final bool hasPoster = hasTmdbPoster || (isYt && ytPosterUrl.isNotEmpty);
+    final String posterUrl = isYt ? ytPosterUrl : (hasTmdbPoster ? (tmdbData?['poster_url'] ?? '') : '');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -671,8 +685,9 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         children: [
           if (hasPoster && posterUrl.isNotEmpty) ...[
             SizedBox(
-              width: 76,
-              height: 114,
+              // 如果是 YouTube 海报（横版16:9），放宽一点让它显示更自然
+              width: isYt ? 90 : 76,
+              height: isYt ? 60 : 114,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -757,7 +772,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        hasPoster ? (tmdbData?['title'] ?? rawName) : rawName,
+                        hasTmdbPoster ? (tmdbData?['title'] ?? rawName) : rawName,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -790,7 +805,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      // 🌟 勋章也帮你改成了 VideoDL / YouTube 专属标识
+                      // 🌟 YouTube 专属红标
                       if (isYt)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -808,20 +823,21 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                           ),
                         ),
 
-                      if (hasPoster)
+                      if (hasTmdbPoster)
                         Text(
                           "${tmdbData?['release_date']?.toString().split('-').first ?? ''} • ⭐️ ${tmdbData?['vote_average'] ?? ''}",
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
 
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(4),
+                      if (!isYt || totalSize > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
                         ),
-                        child: Text(sizeStr, style: TextStyle(fontSize: 10, color: isDark ? Colors.white70 : Colors.black54)),
-                      ),
 
                       if (is4K && !isYt)
                         Container(
@@ -903,6 +919,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
 
   Map<String, dynamic> _getStateConfig(String state) {
     switch (state) {
+      case 'processing':
       case 'downloading':
       case 'stalledDL':
         return {'text': '下载中', 'color': kPrimaryColor};
@@ -914,6 +931,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       case 'stoppedDL':
       case 'stoppedUP':
         return {'text': '已暂停', 'color': const Color(0xFFFF9500)};
+      case 'failed':
       case 'error':
       case 'missingFiles':
         return {'text': '错误', 'color': const Color(0xFFFF3B30)};
