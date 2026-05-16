@@ -219,6 +219,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               controller: controller,
               fit: _videoFit,
               fill: Colors.transparent,
+              controls: NoVideoControls,
               // 🌟 修复：超级巨无霸 Netflix 样式字体！
               subtitleViewConfiguration: const SubtitleViewConfiguration(
                 style: TextStyle(
