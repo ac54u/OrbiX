@@ -102,12 +102,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // 🌟 核心：后台静默探测已有字幕，有的直接挂载，杜绝“只有第一次观看才有”
+  // 🌟 核心：后台静默探测已有字幕，杜绝“只有第一次观看才有”
   Future<void> _autoLoadSubtitle() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final rawBaseUrl = prefs.getString('api_base_url') ?? '[http://152.53.131.108:9000](http://152.53.131.108:9000)';
-      final baseUrl = rawBaseUrl.trim().replaceAll(RegExp(r'\[|\]|\(|\)'), '');
+      final rawBaseUrl = prefs.getString('api_base_url') ?? 'http://152.53.131.108:9000';
+      
+      // 🌟 终极 URL 提取：无视任何 Markdown 或脏字符，精准抓取第一个合法地址！
+      final match = RegExp(r'(https?://[0-9a-zA-Z\.\:]+)').firstMatch(rawBaseUrl);
+      final baseUrl = match != null ? match.group(0)! : 'http://152.53.131.108:9000';
       
       final srtUrl = "$baseUrl/videos/${Uri.encodeComponent(widget.title.replaceAll(".mp4", ""))}.vtt";
       
@@ -166,8 +169,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final rawBaseUrl = prefs.getString('api_base_url') ?? '[http://152.53.131.108:9000](http://152.53.131.108:9000)';
-      final baseUrl = rawBaseUrl.trim().replaceAll(RegExp(r'\[|\]|\(|\)'), '');
+      final rawBaseUrl = prefs.getString('api_base_url') ?? 'http://152.53.131.108:9000';
+      
+      // 🌟 终极 URL 提取：无视任何 Markdown 或脏字符，精准抓取第一个合法地址！
+      final match = RegExp(r'(https?://[0-9a-zA-Z\.\:]+)').firstMatch(rawBaseUrl);
+      final baseUrl = match != null ? match.group(0)! : 'http://152.53.131.108:9000';
       
       final requestUrl = "$baseUrl/api/subtitle/generate?title=${Uri.encodeComponent(widget.title)}";
       final response = await http.get(Uri.parse(requestUrl));
@@ -219,7 +225,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
               controller: controller,
               fit: _videoFit,
               fill: Colors.transparent,
-              controls: NoVideoControls,
+              // 🌟 核心修复：彻底关闭内核自带的“幽灵UI”，只用咱们自己手搓的高级UI！
+              controls: NoVideoControls, 
               // 🌟 修复：超级巨无霸 Netflix 样式字体！
               subtitleViewConfiguration: const SubtitleViewConfiguration(
                 style: TextStyle(
