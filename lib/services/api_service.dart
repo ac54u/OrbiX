@@ -697,17 +697,6 @@ class ApiService {
     return '$cleanUrl/emby/Videos/$itemId/stream?static=true&api_key=$key';
   }
 
-  static Future<String?> getDirectStreamUrl(String torrentName) async {
-    final prefs = await SharedPreferences.getInstance();
-    final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com/api/sync';
-    final apiToken = prefs.getString('orbix_api_token') ?? 'orbix_super_secret_token_2026';
-
-    final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
-    final streamUrl = "$baseUrl/api/stream?token=$apiToken&torrent_name=${Uri.encodeComponent(torrentName)}";
-    debugPrint("🚀 物理直连播放地址: $streamUrl");
-    return streamUrl;
-  }
-
   static Future<void> playInEmby(String itemId) async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('emby_url') ?? '';
@@ -975,15 +964,17 @@ class ApiService {
     return false;
   }
 
+  // 🌟 修正：将虚假的 API 改为指向咱们真实存在的 9000 端口 Python 服务！
   static Future<bool> requestTranslation(String torrentName) async {
     final prefs = await SharedPreferences.getInstance();
-    final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com';
-    final baseUrl = apiUrl.replaceAll(RegExp(r'/api/sync$'), '');
+    
+    // 如果没有配置，自动兜底到你真实的 VPS 9000 端口
+    final baseUrl = prefs.getString('api_base_url') ?? 'http://152.53.131.108:9000';
 
     try {
-      final r = await _dio.post(
-        '$baseUrl/api/translate',
-        data: {'torrent_name': torrentName},
+      final requestUrl = "$baseUrl/api/subtitle/generate?title=${Uri.encodeComponent(torrentName)}";
+      final r = await _dio.get(
+        requestUrl,
         options: Options(
           sendTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(seconds: 10),

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/services.dart'; // 🌟 用于震动反馈
+import 'package:flutter/services.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants.dart';
@@ -52,9 +52,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _embyKeyCtrl = TextEditingController();
   final _tmdbKeyCtrl = TextEditingController();
 
-  // 🌟 新增：私有微服务 API 控制器
-  final _customApiCtrl = TextEditingController();
-
   @override
   void initState() {
     super.initState();
@@ -66,7 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    _easterEggTimer?.cancel(); // 销毁定时器
+    _easterEggTimer?.cancel(); 
     _prowlarrUrlCtrl.dispose();
     _prowlarrKeyCtrl.dispose();
     _radarrUrlCtrl.dispose();
@@ -76,9 +73,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _embyUrlCtrl.dispose();
     _embyKeyCtrl.dispose();
     _tmdbKeyCtrl.dispose();
-
-    // 🌟 销毁新增的控制器
-    _customApiCtrl.dispose();
     super.dispose();
   }
 
@@ -130,9 +124,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _embyKeyCtrl.text = prefs.getString('emby_api_key') ?? '';
 
       _tmdbKeyCtrl.text = prefs.getString('tmdb_key') ?? '';
-
-      // 🌟 读取私有微服务 API 地址
-      _customApiCtrl.text = prefs.getString('custom_api_url') ?? '';
     });
   }
 
@@ -148,9 +139,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await p.setString('emby_url', _embyUrlCtrl.text.trim());
     await p.setString('emby_api_key', _embyKeyCtrl.text.trim());
     await p.setString('tmdb_key', _tmdbKeyCtrl.text.trim());
-
-    // 🌟 移除首尾空格并保存私有微服务地址
-    await p.setString('custom_api_url', _customApiCtrl.text.trim());
 
     Utils.showToast("云端扩展配置已保存");
     Navigator.pop(context);
@@ -196,10 +184,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // 🌟 新增：私有后端 API (FastAPI) 放置在最顶部
-                    Text("私有后端 API (FastAPI)", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
-                    CupertinoTextField(controller: _customApiCtrl, placeholder: "http://你的VPS_IP:8000", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-                    const SizedBox(height: 24),
+                    // 🌟 私有 API 已被移除，界面清爽！
 
                     // Prowlarr
                     Text("Prowlarr 地址", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 12)),
@@ -335,18 +320,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 children: [
                                   const Icon(CupertinoIcons.info_circle, size: 16, color: kPrimaryColor),
                                   const SizedBox(width: 6),
-                                  // 🌟 将版本号包裹在 GestureDetector 中，实现隐藏彩蛋
                                   GestureDetector(
                                     onTap: () {
                                       _easterEggCount++;
                                       _easterEggTimer?.cancel();
                                       _easterEggTimer = Timer(const Duration(seconds: 2), () {
-                                        _easterEggCount = 0; // 2秒内没连点完毕则重置
+                                        _easterEggCount = 0; 
                                       });
 
                                       if (_easterEggCount >= 5) {
                                         _easterEggCount = 0;
-                                        HapticFeedback.heavyImpact(); // 强震动反馈解锁
+                                        HapticFeedback.heavyImpact(); 
                                         Utils.showToast("已解锁深网探索模式");
                                         Navigator.push(
                                           context,
@@ -354,9 +338,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         );
                                       }
                                     },
-                                    behavior: HitTestBehavior.opaque, // 扩大可点击区域
+                                    behavior: HitTestBehavior.opaque, 
                                     child: Padding(
-                                      padding: const EdgeInsets.only(right: 20, top: 4, bottom: 4), // 增加一些 padding 让手指更容易点中
+                                      padding: const EdgeInsets.only(right: 20, top: 4, bottom: 4), 
                                       child: Text("qBittorrent $_qbtVersion", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey, fontSize: 14)),
                                     ),
                                   ),

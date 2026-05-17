@@ -5,34 +5,33 @@ import '../core/utils.dart';
 import 'package:flutter/foundation.dart'; // 🌟 加上这一行来支持 debugPrint
 
 class EmbyService {
-  /// 1. 触发后端进行硬链接整理并刷新 Emby 库
+  /// 1. 🌟 全新升级：直接调用 Emby 官方 API 刷新媒体库（彻底抛弃虚假的私有 API）
   static Future<bool> processAndRefresh(String torrentName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      
+      // 直接读取咱们在设置里填好的真实 Emby 地址
+      final embyUrl = prefs.getString('emby_url')?.replaceAll(RegExp(r'/$'), '');
+      final apiKey = prefs.getString('emby_api_key');
 
-      final apiUrl = prefs.getString('orbix_api_url') ?? 'https://api.dmitt.com/api/sync';
-      final apiToken = prefs.getString('orbix_api_token') ?? 'orbix_super_secret_token_2026';
+      if (embyUrl == null || embyUrl.isEmpty || apiKey == null || apiKey.isEmpty) {
+        debugPrint("❌ Emby 未配置，跳过刷新");
+        return false;
+      }
 
-      final parsed = Utils.cleanFileName(torrentName);
-      final cleanName = "${parsed['title']} (${parsed['year']})";
-
+      debugPrint("🔄 正在直接命令 Emby 刷新媒体库...");
+      
+      // 🌟 核心：直接调用 Emby 官方的全量刷新接口！
       final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "token": apiToken,
-          "torrent_name": torrentName,
-          "target_name": cleanName,
-        }),
-      ).timeout(const Duration(seconds: 15));
+        Uri.parse("$embyUrl/emby/Library/Refresh?api_key=$apiKey"),
+      ).timeout(const Duration(seconds: 10));
 
-      final result = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && result['status'] == 'success') {
+      if (response.statusCode == 204 || response.statusCode == 200) {
+        debugPrint("✅ Emby 媒体库刷新指令发送成功");
         return true;
       }
     } catch (e) {
-      print("❌ OrbiX API 请求异常: $e");
+      debugPrint("❌ Emby 刷新请求异常: $e");
     }
     return false;
   }
@@ -41,8 +40,15 @@ class EmbyService {
   static Future<String?> findItemIdByPath(String torrentName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final embyUrl = (prefs.getString('emby_url') ?? 'https://emby.dmitt.com').replaceAll(RegExp(r'/$'), '');
-      final apiKey = prefs.getString('emby_api_key') ?? 'e1610959a3d1443db6554150602fdf12';
+      
+      // 🌟 清理了误导的默认网址和 Token，强制使用用户自己的配置
+      final embyUrl = prefs.getString('emby_url')?.replaceAll(RegExp(r'/$'), '');
+      final apiKey = prefs.getString('emby_api_key');
+
+      if (embyUrl == null || embyUrl.isEmpty || apiKey == null || apiKey.isEmpty) {
+        debugPrint("❌ Emby 未配置，无法检索");
+        return null;
+      }
 
       // 1. 提取核心特征码
       final parsed = Utils.cleanFileName(torrentName);
@@ -58,7 +64,7 @@ class EmbyService {
         final data = jsonDecode(response.body);
         List items = data['Items'] ?? [];
 
-        // 🌟 兜底机制：如果 SearchTerm 没搜到（比如番号搜不到），直接拉取最近50个项目（跟你截图里在浏览器做的一模一样！）
+        // 🌟 兜底机制：如果 SearchTerm 没搜到（比如番号搜不到），直接拉取最近50个项目
         if (items.isEmpty) {
           final fallbackUrl = "$embyUrl/emby/Items?Recursive=true&IncludeItemTypes=Movie&SortBy=DateCreated&SortOrder=Descending&Limit=50&Fields=Path&api_key=$apiKey";
           final fallbackResp = await http.get(Uri.parse(fallbackUrl)).timeout(const Duration(seconds: 8));
@@ -75,7 +81,7 @@ class EmbyService {
           // 方案A：如果 Emby 给了 Path，且包含特征词
           bool pathMatch = embyPath.isNotEmpty && embyPath.contains(title);
 
-          // 方案B：名字包含特征词 (去掉了死板的年份限制，只要名字包含“飞驰人生3”就中)
+          // 方案B：名字包含特征词 
           bool nameMatch = embyName.contains(title);
 
           // 方案C：专门针对日本番号 (SGKI-086 变 SGKI086 比对)
