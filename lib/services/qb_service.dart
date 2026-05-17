@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:flutter/foundation.dart';
 
-import '../core/network/dio_client.dart'; // 引入刚刚建的网络基座
+import '../core/network/dio_client.dart'; // 引入网络基座
 import '../core/utils.dart';
 import 'server_manager.dart';
 
@@ -27,7 +27,10 @@ class QbService {
     final u = await _url();
     final prefs = await SharedPreferences.getInstance();
     return Options(
-      headers: {'Cookie': prefs.getString('cookie'), 'Referer': u},
+      headers: {
+        'Cookie': prefs.getString('cookie'), 
+        'Referer': u != null ? '$u/' : '', // 统一加上尾部斜杠
+      },
       contentType: customContentType,
     );
   }
@@ -46,17 +49,22 @@ class QbService {
       Map<String, dynamic>? server = overrideConfig ?? await ServerManager.getCurrentServer();
       if (server == null) return false;
 
-      // 🔴 核心修复：强制使用 application/x-www-form-urlencoded 的字符串格式！
-      final String requestBody = 'username=${Uri.encodeComponent(server['user'])}&password=${Uri.encodeComponent(server['pass'])}';
-
       debugPrint("正在尝试登录 qB: $u/api/v2/auth/login");
 
       final r = await _dio.post(
         '$u/api/v2/auth/login',
-        data: requestBody, // 使用原生的 URL-encoded 字符串
+        // 🌟 修复 1：放弃手动拼装字符串，直接传入标准的 Map，让 Dio 自动进行原生安全的 Form 编码
+        data: {
+          'username': server['user'],
+          'password': server['pass'],
+        },
         options: Options(
           contentType: Headers.formUrlEncodedContentType, // 明确告知是表单
-          headers: {'Referer': u}, // qB 强制要求 Referer
+          // 🌟 修复 2：极其关键！Referer 尾部必须追加 '/'，且必须同时补全 Origin 头部，全力击碎新版 qB 的 CSRF 拦截防御
+          headers: {
+            'Referer': '$u/', 
+            'Origin': u,
+          },
         ),
       );
 
@@ -67,9 +75,11 @@ class QbService {
       
       if (cookies != null && cookies.isNotEmpty) {
         for (final c in cookies) {
-          if (c.startsWith('SID=')) {
-            await prefs.setString('cookie', c.split(';').first);
-            debugPrint("✅ 成功提取并保存 SID Cookie!");
+          // 🌟 修复 3：改用 contains 模糊匹配 SID，自动适应可能存在的干扰字符或前导空格，并用 trim() 净化
+          if (c.contains('SID=')) {
+            final cleanCookie = c.split(';').first.trim();
+            await prefs.setString('cookie', cleanCookie);
+            debugPrint("✅ 成功提取并保存 SID Cookie: $cleanCookie");
             return true;
           }
         }
@@ -78,7 +88,7 @@ class QbService {
       // 容错逻辑：如果没拿到新 Cookie，但本地有老 Cookie，也姑且放行
       if (overrideConfig == null) {
         final oldCookie = prefs.getString('cookie');
-        if (oldCookie != null && oldCookie.startsWith('SID=')) return true;
+        if (oldCookie != null && oldCookie.contains('SID=')) return true;
       }
       
       debugPrint("❌ 登录失败：服务器响应了 200，但没有返回 SID Cookie。");
