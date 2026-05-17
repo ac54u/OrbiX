@@ -24,7 +24,7 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   late final player = Player(
     configuration: const PlayerConfiguration(
-      bufferSize: 1024 * 1024 * 64, // 64MB 核心网络流缓冲区
+      bufferSize: 1024 * 1024 * 64, 
     ),
   );
   late final controller = VideoController(player);
@@ -50,6 +50,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isLeftSideDrag = true;
   int _lastHapticLevel = 0;
 
+  // 🌟 新增：高级功能状态
+  double _playbackRate = 1.0;
+  double _subFontSize = 38.0;
+  bool _showSubtitles = true;
+  String _currentSrtUrl = "";
+
+  // 🌟 新增：AI 翻译状态机
+  String _translateStatusText = "正在初始化 AI 引擎...";
+  double _translateFakeProgress = 0.05;
+  Timer? _translateFakeTimer;
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +84,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _initializeUniversalPlayer();
   }
 
+  String _getCleanBaseUrl(String raw) {
+    if (raw.contains('](')) {
+      return raw.split('](').last.replaceAll(')', '').trim();
+    }
+    final match = RegExp(r'(https?://[0-9a-zA-Z\.\:]+)').firstMatch(raw);
+    return match != null ? match.group(0)! : 'http://152.53.131.108:9000';
+  }
+
   Future<void> _initializeUniversalPlayer() async {
     try {
       await player.open(Media(
@@ -83,8 +102,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ));
 
       player.setVolume(_volume);
-
-      // 🌟 修复：进入播放器时，自动去服务器探测是不是已经有翻译好的字幕了！
       _autoLoadSubtitle();
 
       if (mounted) {
@@ -102,22 +119,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // 🌟 核心：后台静默探测已有字幕，杜绝“只有第一次观看才有”
   Future<void> _autoLoadSubtitle() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final rawBaseUrl = prefs.getString('api_base_url') ?? 'http://152.53.131.108:9000';
-      
-      // 🌟 终极 URL 提取：无视任何 Markdown 或脏字符，精准抓取第一个合法地址！
-      final match = RegExp(r'(https?://[0-9a-zA-Z\.\:]+)').firstMatch(rawBaseUrl);
-      final baseUrl = match != null ? match.group(0)! : 'http://152.53.131.108:9000';
-      
+      final baseUrl = _getCleanBaseUrl(rawBaseUrl);
       final srtUrl = "$baseUrl/videos/${Uri.encodeComponent(widget.title.replaceAll(".mp4", ""))}.vtt";
       
-      // 使用 HTTP HEAD 请求（只探测文件头，不耗费流量）
       final response = await http.head(Uri.parse(srtUrl));
       if (response.statusCode == 200 || response.statusCode == 206) {
-        debugPrint("✅ 探测到已有字幕，后台自动挂载中...");
+        _currentSrtUrl = srtUrl;
         await player.setSubtitleTrack(SubtitleTrack.uri(srtUrl, title: 'DeepSeek 中文', language: 'zh'));
       }
     } catch (e) {
@@ -136,7 +147,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _startHideTimer() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && !_isDraggingProgress) {
+      if (mounted && !_isDraggingProgress && !_isTranslating) {
         setState(() => _showControls = false);
       }
     });
@@ -163,50 +174,187 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
+  // 🌟 核心升级：优雅的 AI 翻译进度弹窗
   Future<void> _triggerDeepSeekTranslation() async {
-    setState(() => _isTranslating = true);
-    Utils.showToast("🚀 正在探测/呼叫 AI 字幕...");
+    setState(() {
+      _isTranslating = true;
+      _translateFakeProgress = 0.05;
+      _translateStatusText = "正在嗅探音频轨道...";
+    });
+    
+    _hideTimer?.cancel(); // 翻译期间保持面板亮起
+
+    // 🌟 启动前端状态机模拟器，安抚用户情绪
+    int step = 0;
+    _translateFakeTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        step++;
+        if (_translateFakeProgress < 0.9) {
+          _translateFakeProgress += 0.05; 
+        }
+        switch (step) {
+          case 1: _translateStatusText = "正在提取本地高音质流..."; break;
+          case 2: _translateStatusText = "正在唤醒 Whisper 引擎..."; break;
+          case 4: _translateStatusText = "Whisper 正在高强度听写对白..."; break;
+          case 10: _translateStatusText = "听写完成，正在连线 DeepSeek 大模型..."; break;
+          case 12: _translateStatusText = "DeepSeek 正在进行深度语义翻译..."; break;
+          case 25: _translateStatusText = "大模型运算中，请稍候..."; break;
+        }
+      });
+    });
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final rawBaseUrl = prefs.getString('api_base_url') ?? 'http://152.53.131.108:9000';
-      
-      // 🌟 终极 URL 提取：无视任何 Markdown 或脏字符，精准抓取第一个合法地址！
-      final match = RegExp(r'(https?://[0-9a-zA-Z\.\:]+)').firstMatch(rawBaseUrl);
-      final baseUrl = match != null ? match.group(0)! : 'http://152.53.131.108:9000';
-      
+      final baseUrl = _getCleanBaseUrl(rawBaseUrl);
       final requestUrl = "$baseUrl/api/subtitle/generate?title=${Uri.encodeComponent(widget.title)}";
+      
       final response = await http.get(Uri.parse(requestUrl));
       
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data['status'] == 'success') {
+          setState(() {
+            _translateFakeProgress = 1.0;
+            _translateStatusText = "✅ 翻译完成！正在挂载字幕...";
+          });
+          await Future.delayed(const Duration(milliseconds: 800));
+          
           final srtUrl = baseUrl + data['url'];
-          if (data['cached'] == true) {
-            Utils.showToast("⚡ 本地已有翻译，秒级挂载！");
-          } else {
-            Utils.showToast("✅ AI 翻译完成！正在挂载...");
+          _currentSrtUrl = srtUrl;
+          if (_showSubtitles) {
+            await player.setSubtitleTrack(SubtitleTrack.uri(srtUrl, title: 'DeepSeek 中文', language: 'zh'));
           }
-          await player.setSubtitleTrack(SubtitleTrack.uri(srtUrl, title: 'DeepSeek 中文', language: 'zh'));
+          Utils.showToast(data['cached'] == true ? "⚡ 本地已有缓存翻译，秒级挂载！" : "✅ 智能挂载完毕！");
         } else {
           Utils.showToast("❌ 翻译失败: ${data['detail']}");
         }
       } else {
-        Utils.showToast("❌ 请求失败，原视频可能未提供英文字幕");
+        Utils.showToast("❌ 请求失败，可能无官方字幕且本地处理异常");
       }
     } catch (e) {
       Utils.showToast("❌ 网络通道异常: $e");
     } finally {
+      _translateFakeTimer?.cancel();
       if (mounted) {
         setState(() => _isTranslating = false);
+        _startHideTimer();
       }
     }
+  }
+
+  // 🌟 新增：高级设置控制台 (倍速、字幕大小)
+  void _showSettingsPanel() {
+    _hideTimer?.cancel();
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Container(
+            width: 400,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.85),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("播放器高级设置", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                
+                // 倍速控制
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("播放倍速", style: TextStyle(color: Colors.white70)),
+                    CupertinoSlidingSegmentedControl<double>(
+                      backgroundColor: Colors.white10,
+                      thumbColor: Colors.white30,
+                      groupValue: _playbackRate,
+                      children: const {
+                        1.0: Text("1.0x", style: TextStyle(color: Colors.white)),
+                        1.25: Text("1.25x", style: TextStyle(color: Colors.white)),
+                        1.5: Text("1.5x", style: TextStyle(color: Colors.white)),
+                        2.0: Text("2.0x", style: TextStyle(color: Colors.white)),
+                      },
+                      onValueChanged: (v) {
+                        if (v != null) {
+                          setModalState(() => _playbackRate = v);
+                          setState(() => _playbackRate = v);
+                          player.setRate(v);
+                          HapticFeedback.selectionClick();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // 字幕大小控制
+                Row(
+                  children: [
+                    const Text("字幕大小", style: TextStyle(color: Colors.white70)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: CupertinoSlider(
+                        value: _subFontSize,
+                        min: 16.0,
+                        max: 60.0,
+                        activeColor: CupertinoColors.activeBlue,
+                        onChanged: (v) {
+                          setModalState(() => _subFontSize = v);
+                          setState(() => _subFontSize = v);
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: 40,
+                      child: Text("${_subFontSize.toInt()}", textAlign: TextAlign.right, style: const TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // 字幕开关
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("显示字幕", style: TextStyle(color: Colors.white70)),
+                    CupertinoSwitch(
+                      value: _showSubtitles,
+                      onChanged: (v) {
+                        setModalState(() => _showSubtitles = v);
+                        setState(() => _showSubtitles = v);
+                        if (v && _currentSrtUrl.isNotEmpty) {
+                          player.setSubtitleTrack(SubtitleTrack.uri(_currentSrtUrl, title: 'DeepSeek 中文', language: 'zh'));
+                        } else {
+                          player.setSubtitleTrack(SubtitleTrack.no());
+                        }
+                      },
+                    )
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          );
+        }
+      ),
+    ).then((_) => _startHideTimer());
   }
 
   @override
   void dispose() {
     _hideTimer?.cancel();
     _osdHideTimer?.cancel();
+    _translateFakeTimer?.cancel();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     ScreenBrightness().resetScreenBrightness();
@@ -225,21 +373,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
               controller: controller,
               fit: _videoFit,
               fill: Colors.transparent,
-              // 🌟 核心修复：彻底关闭内核自带的“幽灵UI”，只用咱们自己手搓的高级UI！
               controls: NoVideoControls, 
-              // 🌟 修复：超级巨无霸 Netflix 样式字体！
-              subtitleViewConfiguration: const SubtitleViewConfiguration(
+              // 🌟 响应式字幕配置：跟随设置面板的实时数值！
+              subtitleViewConfiguration: SubtitleViewConfiguration(
                 style: TextStyle(
-                  fontSize: 38, // ⬅️ 从26爆升至38！极其清晰
-                  color: Color(0xFFFFE500),
+                  fontSize: _subFontSize, 
+                  color: const Color(0xFFFFE500),
                   fontWeight: FontWeight.w900,
-                  shadows: [
+                  shadows: const [
                     Shadow(offset: Offset(3, 3), blurRadius: 6, color: Colors.black),
                     Shadow(offset: Offset(-2, -2), blurRadius: 4, color: Colors.black),
                   ],
                 ),
                 textAlign: TextAlign.center,
-                padding: EdgeInsets.only(bottom: 40), 
+                padding: const EdgeInsets.only(bottom: 40), 
               ),
             ),
           ),
@@ -270,8 +417,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 final target = details.globalPosition.dx < screenWidth / 2
                     ? player.state.position - const Duration(seconds: 10)
                     : player.state.position + const Duration(seconds: 10);
-                
-                // 🌟 修复：双击快进必须 await，强迫播放器彻底重算字幕轴
                 await player.seek(target);
                 _showOsdIndicator('seek');
               },
@@ -286,7 +431,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 if (_isLocked) return;
                 final screenHeight = MediaQuery.of(context).size.height;
                 final delta = -details.primaryDelta! / (screenHeight * 0.8);
-
                 double newValue = (_startDragValue + delta).clamp(0.0, 1.0);
                 _startDragValue = newValue;
 
@@ -308,6 +452,50 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   }
                 });
               },
+            ),
+
+          // 🌟 沉浸式 AI 翻译面板
+          if (_isTranslating)
+            Positioned(
+              top: 90,
+              right: 20,
+              child: Container(
+                width: 260,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.75),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white24, width: 0.5),
+                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10)],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(CupertinoIcons.sparkles, color: CupertinoColors.systemYellow, size: 16),
+                        SizedBox(width: 8),
+                        Text("AI 翻译引擎运行中", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: _translateFakeProgress,
+                        backgroundColor: Colors.white10,
+                        color: CupertinoColors.activeBlue,
+                        minHeight: 4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _translateStatusText,
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    )
+                  ],
+                ),
+              ),
             ),
 
           Center(
@@ -407,72 +595,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildCenterPlayButton() {
-    if (_hasError) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: Colors.redAccent, size: 36),
-            const SizedBox(height: 12),
-            const Text("流媒体通道加载失败", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            SizedBox(
-              width: 250,
-              child: Text(
-                _errorMsg,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
+    if (_hasError) return const SizedBox.shrink(); // 错误提示已简化
     return StreamBuilder<bool>(
       stream: player.stream.buffering,
       initialData: player.state.buffering,
       builder: (context, snapshot) {
         final isBuffering = snapshot.data ?? true;
-
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           child: isBuffering
               ? Container(
-                  key: const ValueKey('buffering'),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.55),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white10, width: 1),
-                  ),
+                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.55), borderRadius: BorderRadius.circular(16)),
                   padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      CupertinoActivityIndicator(radius: 16, color: Colors.white),
-                      SizedBox(height: 14),
-                      Text(
-                        "正在缓冲...",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: const CupertinoActivityIndicator(radius: 16, color: Colors.white),
                 )
               : CupertinoButton(
-                  key: const ValueKey('play_btn'),
                   padding: EdgeInsets.zero,
                   onPressed: () {
                     HapticFeedback.lightImpact();
@@ -480,18 +617,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     _startHideTimer();
                   },
                   child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.4),
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
                     padding: const EdgeInsets.all(18),
                     child: StreamBuilder<bool>(
                       stream: player.stream.playing,
                       initialData: player.state.playing,
                       builder: (context, playing) => Icon(
                         playing.data == true ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                        color: Colors.white,
-                        size: 52,
+                        color: Colors.white, size: 52,
                       ),
                     ),
                   ),
@@ -506,11 +639,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       height: 90, 
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.black87, Colors.transparent], 
-        ),
+        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black87, Colors.transparent]),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -526,24 +655,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 widget.title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
-                  shadows: [Shadow(color: Colors.black, blurRadius: 4)], 
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black, blurRadius: 4)]),
+                maxLines: 1, overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
+          // 🌟 顶部工具栏扩展：设置按钮 + 翻译按钮
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: _showSettingsPanel,
+            child: const Icon(CupertinoIcons.gear_alt_fill, color: Colors.white, size: 26),
+          ),
+          const SizedBox(width: 16),
           CupertinoButton(
             padding: EdgeInsets.zero,
             onPressed: _isTranslating ? null : _triggerDeepSeekTranslation,
-            child: _isTranslating
-                ? const CupertinoActivityIndicator(color: Colors.white)
-                : const Icon(CupertinoIcons.captions_bubble_fill, color: Colors.white, size: 28),
+            child: Icon(
+              CupertinoIcons.captions_bubble_fill, 
+              color: _isTranslating ? Colors.white30 : Colors.white, 
+              size: 28
+            ),
           ),
         ],
       ),
@@ -554,25 +685,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(30, 40, 30, 40),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [Colors.black87, Colors.transparent],
-        ),
+        gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black87, Colors.transparent]),
       ),
       child: StreamBuilder(
         stream: player.stream.position,
         builder: (context, pos) {
           final realPosition = pos.data ?? Duration.zero;
           final duration = player.state.duration;
-
           final currentSliderValue = _isDraggingProgress ? _dragProgressValue : realPosition.inSeconds.toDouble();
           final maxSliderValue = duration.inSeconds.toDouble().clamp(0.01, double.infinity);
 
           return Row(
             children: [
-              Text(_formatDuration(Duration(seconds: currentSliderValue.toInt())),
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Courier')),
+              Text(_formatDuration(Duration(seconds: currentSliderValue.toInt())), style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Courier')),
               Expanded(
                 child: CupertinoSlider(
                   value: currentSliderValue.clamp(0.0, maxSliderValue),
@@ -580,30 +705,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   activeColor: Colors.redAccent, 
                   thumbColor: Colors.white,
                   onChangeStart: (v) {
-                    setState(() {
-                      _isDraggingProgress = true;
-                      _dragProgressValue = v;
-                    });
+                    setState(() { _isDraggingProgress = true; _dragProgressValue = v; });
                     _hideTimer?.cancel();
-                    
-                    // 🌟 修复：拖动大型网络流时，必须先将播放器暂停，断开 IO 通道防死锁！
                     player.pause();
                   },
                   onChanged: (v) => setState(() => _dragProgressValue = v),
                   onChangeEnd: (v) async {
                     HapticFeedback.selectionClick();
-                    
-                    // 🌟 修复：强制等进度条 Seek 彻底到位，强制刷新字幕树，然后再继续播放！
                     await player.seek(Duration(seconds: v.toInt()));
                     player.play();
-                    
                     setState(() => _isDraggingProgress = false);
                     _startHideTimer();
                   },
                 ),
               ),
-              Text(_formatDuration(duration),
-                  style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Courier')),
+              Text(_formatDuration(duration), style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Courier')),
               const SizedBox(width: 20),
               CupertinoButton(
                 padding: EdgeInsets.zero,
@@ -611,22 +727,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 onPressed: () {
                   HapticFeedback.lightImpact();
                   setState(() {
-                    if (_videoFit == BoxFit.contain) {
-                      _videoFit = BoxFit.cover;
-                    } else if (_videoFit == BoxFit.cover) {
-                      _videoFit = BoxFit.fill;
-                    } else {
-                      _videoFit = BoxFit.contain;
-                    }
+                    if (_videoFit == BoxFit.contain) _videoFit = BoxFit.cover;
+                    else if (_videoFit == BoxFit.cover) _videoFit = BoxFit.fill;
+                    else _videoFit = BoxFit.contain;
                   });
                   _startHideTimer();
                 },
                 child: Icon(
-                  _videoFit == BoxFit.contain
-                      ? CupertinoIcons.rectangle_expand_vertical
-                      : CupertinoIcons.rectangle_arrow_up_right_arrow_down_left,
-                  color: Colors.white,
-                  size: 22,
+                  _videoFit == BoxFit.contain ? CupertinoIcons.rectangle_expand_vertical : CupertinoIcons.rectangle_arrow_up_right_arrow_down_left,
+                  color: Colors.white, size: 22,
                 ),
               ),
             ],
