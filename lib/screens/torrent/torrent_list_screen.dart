@@ -98,7 +98,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       final hash = t['hash'];
       final rawName = t['name'] ?? '';
 
-      // YouTube 任务不需要去 TMDB 刮削海报
       if (t['is_yt'] == true) continue;
 
       if (hash == null || rawName.isEmpty) continue;
@@ -140,6 +139,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         'is_yt': true,
         'size': task['size'] ?? 0,
         'poster_url': task['thumbnail'] ?? '', 
+        'speed_str': task['speed_str'] ?? '', // 🌟 解析后端发来的实时速度！
         'play_url': task['status'] == 'completed' 
             ? YouTubeDownloadService.getVideoUrl(task['url']) 
             : null
@@ -646,8 +646,10 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     String stateText = stateConfig['text'];
     Color stateColor = stateConfig['color'];
 
-    // 🌟 神级核心：YouTube 专属的动态实时进度微调
+    // 🌟 神级核心：挂载来自后端的真实速度（MB/s 或 倍数）
+    final String ytSpeedStr = t['speed_str'] ?? '';
     String ytDetailText = "";
+    
     if (isYt && progress < 1.0 && stateRaw != 'failed') {
       if (progress < 0.10) {
         stateText = "解析中";
@@ -656,11 +658,13 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       } else if (progress < 0.80) {
         stateText = "下载中";
         stateColor = CupertinoColors.activeBlue;
-        ytDetailText = "⬇️ 源流高速下载中...";
+        // 🌟 拼上真实的 MB/s 下载速度！
+        ytDetailText = ytSpeedStr.isNotEmpty ? "⬇️ 源流高速下载中... ($ytSpeedStr)" : "⬇️ 源流高速下载中...";
       } else if (progress < 0.99) {
         stateText = "合并中";
         stateColor = CupertinoColors.systemOrange;
-        ytDetailText = "🎬 音视频高强度合并中...";
+        // 🌟 拼上真实的 FFmpeg 合并倍速！
+        ytDetailText = ytSpeedStr.isNotEmpty ? "🎬 音视频高强度合并中... ($ytSpeedStr)" : "🎬 音视频高强度合并中...";
       } else {
         stateText = "收尾中";
         stateColor = CupertinoColors.systemTeal;
@@ -714,7 +718,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                             posterUrl,
                             fit: BoxFit.cover,
                             headers: const {
-                              "Referer": "https://javbee.co/",
+                              "Referer": "[https://javbee.co/](https://javbee.co/)",
                               "User-Agent": "Mozilla/5.0",
                             },
                           ),
@@ -752,7 +756,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                         posterUrl,
                         fit: BoxFit.cover,
                         headers: const {
-                          "Referer": "https://javbee.co/",
+                          "Referer": "[https://javbee.co/](https://javbee.co/)",
                           "User-Agent": "Mozilla/5.0",
                         },
                         errorBuilder: (context, error, stackTrace) => Container(
@@ -881,14 +885,14 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: stateColor),
                     ),
                     
-                    // 🌟 核心呈现区：将原本死板的网速，替换为酷炫的 YouTube 实时状态流！
+                    // 🌟 完全重构：自带真实速率雷达的动态显示！
                     Text(
                       isYt && progress < 1.0 && stateRaw != 'failed'
                           ? ytDetailText
                           : (dlSpeed > 0 || upSpeed > 0 ? "${Utils.formatBytes(dlSpeed > 0 ? dlSpeed : upSpeed)}/s" : ""),
                       style: TextStyle(
                           fontWeight: isYt && progress < 1.0 ? FontWeight.bold : FontWeight.w600, 
-                          fontSize: isYt && progress < 1.0 ? 13 : 14, 
+                          fontSize: isYt && progress < 1.0 ? 12 : 14, 
                           color: isYt && progress < 1.0 ? stateColor : (isDark ? Colors.white70 : Colors.black)),
                     ),
                   ],
@@ -899,7 +903,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   child: LinearProgressIndicator(
                     value: progress,
                     backgroundColor: isDark ? Colors.grey[800] : const Color(0xFFF2F2F7),
-                    // 🌟 YouTube 完成后才变红，过程中与状态色同步！
                     color: isYt && progress >= 1.0 ? Colors.red : stateColor,
                     minHeight: 4,
                   ),
