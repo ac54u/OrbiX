@@ -62,49 +62,20 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
     }
   }
 
-  // 🌟 YouTube 下载格式选择 (直接跳过中间选择，直接选格式)
-  void _showYouTubeDownloadOptions(String url) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (BuildContext sheetContext) => CupertinoActionSheet(
-        title: const Text('检测到 YouTube 链接'),
-        message: const Text('请选择您想要的视频格式进行提取'),
-        actions: YouTubeDownloadService.getAvailableFormats()
-            .map((format) => CupertinoActionSheetAction(
-                  child: Text(YouTubeDownloadService.getFormatLabel(format)),
-                  onPressed: () async {
-                    Navigator.pop(sheetContext);
-                    await _downloadYouTubeVideo(url, format);
-                  },
-                ))
-            .toList(),
-        cancelButton: CupertinoActionSheetAction(
-          isDestructiveAction: true,
-          onPressed: () {
-            Navigator.pop(sheetContext);
-          },
-          child: const Text('取消'),
-        ),
-      ),
-    );
-  }
-
-  // 🌟 执行 YouTube 下载 (全新体验：后台排队+秒关弹窗版)
-  Future<void> _downloadYouTubeVideo(String url, String format) async {
-    setState(() => _isSubmitting = true);
-
+  // 🌟 执行 YouTube 下载 (无弹窗一键直达版)
+  Future<void> _downloadYouTubeVideo(String url) async {
     Utils.showToast("正在向服务器发送任务...");
 
-    // 只负责发请求，拿到 taskId 就算成功
-    final taskId = await YouTubeDownloadService.startDownload(url, format: format);
+    // 调用已升级的 Service，底层已默认锁定 'best' 最高画质
+    final taskId = await YouTubeDownloadService.startDownload(url);
 
     if (!mounted) return;
     setState(() => _isSubmitting = false);
 
     if (taskId != null) {
       HapticFeedback.heavyImpact();
-      Utils.showToast("✅ 任务已加入后台，进度请查看列表");
-      // 🌟 核心：不等下载完成，直接秒关弹窗！
+      Utils.showToast("✅ YouTube 任务已加入后台");
+      // 🌟 核心：直接秒关弹窗，让用户回主页看进度！
       Navigator.pop(context); 
     } else {
       Utils.showToast("❌ 无法启动提取任务，请检查网络或链接");
@@ -136,10 +107,9 @@ class _AddTorrentSheetState extends State<AddTorrentSheet> {
         return;
       }
 
-      // 🌟🌟 核心拦截逻辑：发现 YouTube 链接，直接弹出格式选择进行下载
+      // 🌟🌟 核心升级逻辑：发现 YouTube 链接，不弹任何选项，直接无脑最高画质开下！
       if (YouTubeDownloadService.isYouTubeUrl(url)) {
-        setState(() => _isSubmitting = false);
-        _showYouTubeDownloadOptions(url);
+        await _downloadYouTubeVideo(url);
         return;
       }
 

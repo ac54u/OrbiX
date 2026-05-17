@@ -11,25 +11,14 @@ class YouTubeDownloadService {
     return url.contains('youtube.com/') || url.contains('youtu.be/');
   }
 
-  // 定义可选格式
-  static List<String> getAvailableFormats() => ['best', '720p', 'audio'];
-
-  static String getFormatLabel(String format) {
-    switch (format) {
-      case 'best': return '🎬 最佳画质 (4K/1080P)';
-      case '720p': return '📱 标准画质 (720P)';
-      case 'audio': return '🎵 仅提取音频 (MP3)';
-      default: return '默认格式';
-    }
-  }
-
-  // 1. 发起下载任务
-  static Future<String?> startDownload(String url, {String format = 'best'}) async {
+  // 1. 发起下载任务 (🌟 升级：无参数干扰，强制后端拉取 'best' 最高画质)
+  static Future<String?> startDownload(String url) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/download'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'url': url, 'format': format}),
+        // 直接在 body 里写死 format: 'best'
+        body: jsonEncode({'url': url, 'format': 'best'}), 
       );
       if (response.statusCode == 200 || response.statusCode == 202) {
         final data = jsonDecode(response.body);
@@ -41,7 +30,7 @@ class YouTubeDownloadService {
     return null;
   }
 
-  // 2. 轮询直到完成 (用于 AddTorrentSheet 的等待逻辑)
+  // 2. 轮询直到完成 (用于页面等待/进度刷新逻辑)
   static Future<bool> pollUntilComplete(
     String taskId, {
     int maxAttempts = 600,
@@ -74,7 +63,7 @@ class YouTubeDownloadService {
     return null;
   }
 
-  // 4. 获取已完成的文件列表 (用于 TorrentListScreen)
+  // 4. 获取已完成的文件列表
   static Future<List<dynamic>> getFiles() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/api/files'));
