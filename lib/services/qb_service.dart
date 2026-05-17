@@ -46,32 +46,53 @@ class QbService {
       Map<String, dynamic>? server = overrideConfig ?? await ServerManager.getCurrentServer();
       if (server == null) return false;
 
+      // 🔴 核心修复：强制使用 application/x-www-form-urlencoded 的字符串格式！
+      final String requestBody = 'username=${Uri.encodeComponent(server['user'])}&password=${Uri.encodeComponent(server['pass'])}';
+
+      debugPrint("正在尝试登录 qB: $u/api/v2/auth/login");
+
       final r = await _dio.post(
         '$u/api/v2/auth/login',
-        data: {'username': server['user'], 'password': server['pass']},
+        data: requestBody, // 使用原生的 URL-encoded 字符串
         options: Options(
-          contentType: Headers.formUrlEncodedContentType,
-          headers: {'Referer': u},
+          contentType: Headers.formUrlEncodedContentType, // 明确告知是表单
+          headers: {'Referer': u}, // qB 强制要求 Referer
         ),
       );
 
+      debugPrint("qB 登录响应状态: ${r.statusCode}, Headers: ${r.headers}");
+
       final cookies = r.headers['set-cookie'];
       final prefs = await SharedPreferences.getInstance();
-      if (cookies != null) {
+      
+      if (cookies != null && cookies.isNotEmpty) {
         for (final c in cookies) {
           if (c.startsWith('SID=')) {
             await prefs.setString('cookie', c.split(';').first);
+            debugPrint("✅ 成功提取并保存 SID Cookie!");
             return true;
           }
         }
       }
 
+      // 容错逻辑：如果没拿到新 Cookie，但本地有老 Cookie，也姑且放行
       if (overrideConfig == null) {
         final oldCookie = prefs.getString('cookie');
         if (oldCookie != null && oldCookie.startsWith('SID=')) return true;
       }
+      
+      debugPrint("❌ 登录失败：服务器响应了 200，但没有返回 SID Cookie。");
       return false;
+      
     } catch (e, stack) {
+      if (e is DioException) {
+         debugPrint("🔥🔥🔥 qB 登录爆红，Dio 异常: [${e.type}] ${e.message}");
+         if (e.response != null) {
+           debugPrint("🔥🔥🔥 qB 服务器返回错误状态码: ${e.response?.statusCode}, 数据: ${e.response?.data}");
+         }
+      } else {
+         debugPrint("🔥🔥🔥 qB 登录爆红，未知异常: $e");
+      }
       await Sentry.captureException(e, stackTrace: stack);
       return false;
     }
