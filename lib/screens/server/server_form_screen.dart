@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/constants.dart';
 import '../../core/utils.dart';
 import '../../services/server_manager.dart';
-import '../../services/api_service.dart';
+import '../../services/qb_service.dart'; // 🌟 核心修正：导入真正的 QbService
 import '../main_tab_scaffold.dart';
 
 class ServerFormScreen extends StatefulWidget {
@@ -68,7 +68,8 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
       'https': _useHttps,
     };
 
-    bool ok = await ApiService.testConnection(config);
+    // 🌟 核心修正：改用真正的 QbService 进行连接测试
+    bool ok = await QbService.testConnection(config);
     setState(() => _testing = false);
     HapticFeedback.mediumImpact();
 
