@@ -38,7 +38,6 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     _fetchAndParse();
   }
 
-  // 保留了底层 SSL 证书无视功能，防止部分网络环境下的握手拦截
   Dio _getBypassDio() {
     final dio = Dio();
     dio.httpClientAdapter = IOHttpClientAdapter(
@@ -77,7 +76,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
       if (mounted) {
         setState(() {
           if (parsedData.isEmpty) {
-            _errorMessage = "未能提取到资源，请点击右上角刷新。";
+            _errorMessage = "未能提取到资源，可能是网络被拦截，请点击右上角刷新。";
           } else {
             _resources = parsedData;
           }
@@ -115,7 +114,7 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
             'title': title, 
             'poster': poster, 
             'url': torrentUrl, 
-            'code': code
+            'code': code.toUpperCase() // 🌟 格式化番号
           });
           break;
         }
@@ -129,12 +128,63 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     HapticFeedback.mediumImpact();
     Utils.showToast("正在发送至下载节点...");
     
+    // 🌟 这里自动把番号加上去作为分类或者标签，可以方便以后整理，目前先传url
     bool success = await ApiService.addTorrent(data['url']!);
     if (success) {
       Utils.showToast("🎉 已成功下发任务！");
     } else {
       Utils.showToast("❌ 下发失败，请检查 qB 连接");
     }
+  }
+
+  // 🌟 战术控制面板
+  void _showOptions(BuildContext context, Map<String, String> data) {
+    HapticFeedback.lightImpact();
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(data['code'] ?? '资源选项', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        message: Text(data['title'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _download(data);
+            },
+            child: const Text('📥 直接下发至 qBittorrent', style: TextStyle(color: CupertinoColors.activeBlue)),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              Utils.showToast("正在探测 Emby 媒体库...");
+              // 用番号去 Emby 里查重
+              final itemId = await ApiService.checkMovieInEmby('', title: data['code']);
+              if (itemId != null) {
+                HapticFeedback.heavyImpact();
+                Utils.showToast("⚠️ 别下了！你的 Emby 库中已有此影片！");
+              } else {
+                HapticFeedback.selectionClick();
+                Utils.showToast("✅ 库内未查到此番号，可以安全下载");
+              }
+            },
+            child: const Text('🔍 Emby 库内查重探测', style: TextStyle(color: CupertinoColors.systemPurple)),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Clipboard.setData(ClipboardData(text: data['url'] ?? ''));
+              Utils.showToast("已复制种子链接");
+            },
+            child: const Text('📋 复制种子下载直链', style: TextStyle(color: CupertinoColors.activeOrange)),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('取消'),
+        ),
+      ),
+    );
   }
 
   @override
@@ -224,36 +274,82 @@ class _JavExploreScreenState extends State<JavExploreScreen> {
     );
   }
 
+  // 🌟 重新设计的沉浸式海报卡片
   Widget _buildResourceCard(Map<String, String> data, Color cardColor) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+        color: cardColor, 
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 5))]
+      ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
+          // 底层大尺寸海报
           CachedNetworkImage(
             imageUrl: data['poster']!,
-            height: 240,
+            width: double.infinity,
+            height: 280,
             fit: BoxFit.cover,
             alignment: Alignment.topCenter,
-            placeholder: (context, url) => Container(height: 240, color: Colors.white10, child: const CupertinoActivityIndicator()),
-            errorWidget: (context, url, error) => Container(height: 240, color: Colors.white10, child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
+            placeholder: (context, url) => Container(height: 280, color: Colors.white10, child: const CupertinoActivityIndicator()),
+            errorWidget: (context, url, error) => Container(height: 280, color: Colors.white10, child: const Icon(CupertinoIcons.photo, color: Colors.grey)),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
+          
+          // 黑色渐变遮罩，为了突出文字
+          Positioned(
+            left: 0, right: 0, bottom: 0,
+            height: 120,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Colors.black.withOpacity(0.95), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+
+          // 浮于表面的信息和按钮
+          Positioned(
+            left: 16, right: 16, bottom: 16,
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: Text(data['title']!, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: CupertinoColors.activeOrange, borderRadius: BorderRadius.circular(4)),
+                        child: Text(data['code'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        data['title']!, 
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, height: 1.2), 
+                        maxLines: 2, 
+                        overflow: TextOverflow.ellipsis
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 12),
                 CupertinoButton(
-                  color: CupertinoColors.activeOrange,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  color: Colors.white.withOpacity(0.2),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   borderRadius: BorderRadius.circular(20),
-                  onPressed: () => _download(data),
-                  child: const Text("直链下载", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                  onPressed: () => _showOptions(context, data),
+                  child: const Row(
+                    children: [
+                      Text("获取", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                      SizedBox(width: 4),
+                      Icon(CupertinoIcons.cloud_download_fill, size: 16, color: Colors.white),
+                    ],
+                  ),
                 ),
               ],
             ),

@@ -293,17 +293,29 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     Utils.showToast("⚡ 正在建立视频通道...");
 
     String? streamUrl;
+    
+    // 🌟 核心播放通道分流！
     if (isYt) {
+      // YouTube 任务走咱们自己的 VideoDL API 直连
       streamUrl = t['play_url']; 
     } else {
-      streamUrl = await ApiService.getDirectStreamUrl(rawName);
+      // BT 下载任务彻底交给 Emby 串流！
+      Utils.showToast("正在通过 Emby 核心获取流媒体...");
+      await EmbyService.processAndRefresh(rawName).catchError((_) => false);
+      await Future.delayed(const Duration(seconds: 1));
+      
+      // 🌟 使用咱们写好的超级模糊路径匹配神器
+      String? embyItemId = await EmbyService.findItemIdByPath(rawName);
+
+      if (embyItemId != null) {
+        streamUrl = await ApiService.getEmbyStreamUrl(embyItemId);
+      } else {
+        Utils.showToast("❌ Emby 尚未将此视频入库，请稍候再试");
+        return;
+      }
     }
 
     if (streamUrl != null && mounted) {
-      if (!isYt) {
-        EmbyService.processAndRefresh(rawName).catchError((_) => false);
-      }
-
       Navigator.push(
         context,
         CupertinoPageRoute(

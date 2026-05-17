@@ -278,11 +278,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       backgroundColor: Colors.white10,
                       thumbColor: Colors.white30,
                       groupValue: _playbackRate,
-                      children: const {
-                        1.0: Text("1.0x", style: TextStyle(color: Colors.white)),
-                        1.25: Text("1.25x", style: TextStyle(color: Colors.white)),
-                        1.5: Text("1.5x", style: TextStyle(color: Colors.white)),
-                        2.0: Text("2.0x", style: TextStyle(color: Colors.white)),
+                      children: { // ✅ 删掉 const
+                        1.0: const Text("1.0x", style: TextStyle(color: Colors.white)),
+                        1.25: const Text("1.25x", style: TextStyle(color: Colors.white)),
+                        1.5: const Text("1.5x", style: TextStyle(color: Colors.white)),
+                        2.0: const Text("2.0x", style: TextStyle(color: Colors.white)),
                       },
                       onValueChanged: (v) {
                         if (v != null) {
