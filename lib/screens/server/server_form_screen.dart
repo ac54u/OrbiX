@@ -38,14 +38,32 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
     }
   }
 
+  // 🌟 核心净化函数：自动剔除多余的 http:// 和斜杠
+  String _getCleanHost() {
+    String host = _hostCtrl.text.trim();
+    host = host.replaceAll(RegExp(r'^https?://'), ''); // 砍掉开头的 http:// 或 https://
+    host = host.replaceAll(RegExp(r'/$'), ''); // 砍掉结尾的 /
+    return host;
+  }
+
   Future<void> _testConnection() async {
     FocusScope.of(context).unfocus();
+    
+    if (_hostCtrl.text.isEmpty) {
+      Utils.showToast("请输入主机地址");
+      return;
+    }
+
     setState(() => _testing = true);
 
+    // 自动回显清理后的干净 IP 给输入框
+    String cleanHost = _getCleanHost();
+    _hostCtrl.text = cleanHost; 
+
     final config = {
-      'host': _hostCtrl.text,
-      'port': _portCtrl.text,
-      'user': _userCtrl.text,
+      'host': cleanHost,
+      'port': _portCtrl.text.trim(),
+      'user': _userCtrl.text.trim(),
       'pass': _passCtrl.text,
       'https': _useHttps,
     };
@@ -68,7 +86,7 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
         content: Padding(
           padding: const EdgeInsets.only(top: 8.0),
           child: Text(
-            ok ? "连接成功！" : "连接失败，请检查配置。",
+            ok ? "连接成功！" : "连接失败，请检查配置或密码是否正确。",
             style: TextStyle(
               fontSize: 16,
               color: themeNotifier.value ? Colors.white : Colors.black,
@@ -91,11 +109,13 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
       return;
     }
 
+    String cleanHost = _getCleanHost();
+
     final server = {
-      'name': _nameCtrl.text.isEmpty ? _hostCtrl.text : _nameCtrl.text,
-      'host': _hostCtrl.text,
-      'port': _portCtrl.text,
-      'user': _userCtrl.text,
+      'name': _nameCtrl.text.isEmpty ? cleanHost : _nameCtrl.text,
+      'host': cleanHost,
+      'port': _portCtrl.text.trim(),
+      'user': _userCtrl.text.trim(),
       'pass': _passCtrl.text,
       'https': _useHttps,
       'added_at': DateTime.now().millisecondsSinceEpoch,
@@ -117,7 +137,6 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. 使用 ValueListenableBuilder 监听主题
     return ValueListenableBuilder<bool>(
       valueListenable: themeNotifier,
       builder: (context, isDark, child) {
@@ -150,7 +169,7 @@ class _ServerFormScreenState extends State<ServerFormScreen> {
                 header: const Text("服务器信息"),
                 children: [
                   _input("名称", _nameCtrl, "例如: Nas", isDark),
-                  _input("主机", _hostCtrl, "IP 或 域名", isDark),
+                  _input("主机", _hostCtrl, "仅填 IP 或 域名 (勿加http)", isDark),
                   _input("端口", _portCtrl, "8080或443", isDark),
                 ],
               ),
