@@ -123,17 +123,14 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
   }
 
   Future<void> _fetchTorrents() async {
-    // 1. 抓取原有的 BT 任务
     final btData = await ApiService.getTorrents(
       filter: _filterStatus == 'default' ? 'all' : _filterStatus,
       category: _filterCategory,
       tag: _filterTag,
     ) ?? [];
 
-    // 🌟 2. 从全新的 FastAPI 后端抓取 YouTube 任务 (包含下载中和已完成的)
     final rawYtData = await YouTubeDownloadService.getFiles();
 
-    // 🌟 3. 数据“伪装”：解析后端的 progress, status, thumbnail 映射为 UI 格式
     final ytData = rawYtData.map((task) {
       return {
         'hash': task['id'] ?? 'yt_${task['filename'].hashCode}', 
@@ -142,15 +139,13 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         'state': task['status'] ?? 'completed', 
         'is_yt': true,
         'size': task['size'] ?? 0,
-        'poster_url': task['thumbnail'] ?? '', // 挂载 YouTube 官方高清封面图
-        // ✅ 这里修复了致命 Bug：将 task['filename'] 改为了 task['url']
+        'poster_url': task['thumbnail'] ?? '', 
         'play_url': task['status'] == 'completed' 
             ? YouTubeDownloadService.getVideoUrl(task['url']) 
             : null
       };
     }).toList();
 
-    // 4. 合并数据
     final List<dynamic> allData = [...btData, ...ytData];
 
     if (mounted) {
@@ -180,13 +175,11 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         _isLoggedIn = true;
       });
 
-      // 只给真实的 BT 任务去后台刮削海报
       _fetchPostersBackground(btData);
     }
   }
 
   Future<void> _executeAction(String hash, String action) async {
-    // 🌟 识别是否是 YouTube 专属的删除操作
     final target = _torrents.firstWhere((e) => e['hash'] == hash, orElse: () => null);
     if (target != null && target['is_yt'] == true) {
       if (action == 'delete' || action == 'deleteWithFiles') {
@@ -203,11 +196,10 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
         );
         if (confirm != true) return;
 
-        // 如果还没下载完，后端其实会删掉临时任务。但保险起见还是用统一的文件删除API
         final targetName = target['state'] == 'completed' ? target['name'] : target['hash'];
         final success = await YouTubeDownloadService.deleteFile(targetName);
         if (success) {
-          Utils.showToast("已删除视频");
+          Utils.showToast("已彻底粉碎");
           _fetchTorrents();
         } else {
           Utils.showToast("删除失败，请检查服务器");
@@ -283,7 +275,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
 
     if (rawName.isEmpty) return;
 
-    // 🌟 YouTube 任务拦截：必须 completed 才能播放
     if (isYt && t['state'] != 'completed') {
       Utils.showToast("视频正在处理中，暂无法播放...");
       return;
@@ -301,7 +292,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
 
     Utils.showToast("⚡ 正在建立视频通道...");
 
-    // 🌟 核心播放逻辑分离：YouTube 取自带直链，BT 去解析物理推流
     String? streamUrl;
     if (isYt) {
       streamUrl = t['play_url']; 
@@ -473,7 +463,6 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       child: CupertinoContextMenu(
         actions: [
-          // YouTube 任务屏蔽 qBittorrent 专属的启停操作
           if (!isYt) ...[
             CupertinoContextMenuAction(
               trailingIcon: isStopped ? CupertinoIcons.play_arrow_solid : CupertinoIcons.pause_fill,
@@ -540,7 +529,7 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
           CupertinoContextMenuAction(
             isDestructiveAction: true,
             trailingIcon: CupertinoIcons.trash,
-            child: Text(isYt ? "删除视频" : "删除任务"),
+            child: Text(isYt ? "彻底删除" : "删除任务"),
             onPressed: () {
               Navigator.pop(context);
               _executeAction(hash, 'delete');
@@ -652,11 +641,34 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
     final int totalSize = t['size'] ?? 0;
     final bool isYt = t['is_yt'] == true;
 
+    // 获取基础状态和颜色
     final stateConfig = _getStateConfig(stateRaw);
-    final String stateText = stateConfig['text'];
-    final Color stateColor = stateConfig['color'];
-    final String etaStr = (eta > 8000000 || eta < 0) ? "∞" : "${eta ~/ 60}m ${eta % 60}s";
+    String stateText = stateConfig['text'];
+    Color stateColor = stateConfig['color'];
 
+    // 🌟 神级核心：YouTube 专属的动态实时进度微调
+    String ytDetailText = "";
+    if (isYt && progress < 1.0 && stateRaw != 'failed') {
+      if (progress < 0.10) {
+        stateText = "解析中";
+        stateColor = CupertinoColors.systemPurple;
+        ytDetailText = "🔍 嗅探解析中...";
+      } else if (progress < 0.80) {
+        stateText = "下载中";
+        stateColor = CupertinoColors.activeBlue;
+        ytDetailText = "⬇️ 源流高速下载中...";
+      } else if (progress < 0.99) {
+        stateText = "合并中";
+        stateColor = CupertinoColors.systemOrange;
+        ytDetailText = "🎬 音视频高强度合并中...";
+      } else {
+        stateText = "收尾中";
+        stateColor = CupertinoColors.systemTeal;
+        ytDetailText = "🖼️ 提取官方海报...";
+      }
+    }
+
+    final String etaStr = (eta > 8000000 || eta < 0) ? "∞" : "${eta ~/ 60}m ${eta % 60}s";
     final String sizeStr = Utils.formatBytes(totalSize);
     String quality = Utils.cleanFileName(rawName)['quality'] ?? 'HD';
 
@@ -868,9 +880,16 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                       "${(progress * 100).toStringAsFixed(1)}%",
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: stateColor),
                     ),
+                    
+                    // 🌟 核心呈现区：将原本死板的网速，替换为酷炫的 YouTube 实时状态流！
                     Text(
-                      dlSpeed > 0 || upSpeed > 0 ? "${Utils.formatBytes(dlSpeed > 0 ? dlSpeed : upSpeed)}/s" : "",
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: isDark ? Colors.white70 : Colors.black),
+                      isYt && progress < 1.0 && stateRaw != 'failed'
+                          ? ytDetailText
+                          : (dlSpeed > 0 || upSpeed > 0 ? "${Utils.formatBytes(dlSpeed > 0 ? dlSpeed : upSpeed)}/s" : ""),
+                      style: TextStyle(
+                          fontWeight: isYt && progress < 1.0 ? FontWeight.bold : FontWeight.w600, 
+                          fontSize: isYt && progress < 1.0 ? 13 : 14, 
+                          color: isYt && progress < 1.0 ? stateColor : (isDark ? Colors.white70 : Colors.black)),
                     ),
                   ],
                 ),
@@ -880,7 +899,8 @@ class _TorrentListScreenState extends State<TorrentListScreen> {
                   child: LinearProgressIndicator(
                     value: progress,
                     backgroundColor: isDark ? Colors.grey[800] : const Color(0xFFF2F2F7),
-                    color: isYt ? Colors.red : stateColor,
+                    // 🌟 YouTube 完成后才变红，过程中与状态色同步！
+                    color: isYt && progress >= 1.0 ? Colors.red : stateColor,
                     minHeight: 4,
                   ),
                 ),
