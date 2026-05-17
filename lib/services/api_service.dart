@@ -48,7 +48,11 @@ class ApiService {
     final u = await _url();
     final prefs = await SharedPreferences.getInstance();
     return Options(
-      headers: {'Cookie': prefs.getString('cookie'), 'Referer': u},
+      headers: {
+        'Cookie': prefs.getString('cookie'), 
+        'Referer': u != null ? '$u/' : '', // 🌟 修复 1：尾部统一加上斜杠防 CSRF 拦截
+        if (u != null) 'Origin': u,        // 🌟 修复 2：同步补齐 Origin 头部安全策略
+      },
       followRedirects: false,
       validateStatus: (status) => true,
     );
@@ -67,23 +71,37 @@ class ApiService {
           overrideConfig ?? await ServerManager.getCurrentServer();
       if (server == null) return false;
 
+      debugPrint("ApiService 正在尝试登录 qB: $u/api/v2/auth/login");
+
       final r = await _dio.post(
         '$u/api/v2/auth/login',
-        data: {'username': server['user'], 'password': server['pass']},
+        // 🌟 修复 3：使用标准的 Map 数据发送 Form 表单
+        data: {
+          'username': server['user'],
+          'password': server['pass'],
+        },
         options: Options(
           contentType: Headers.formUrlEncodedContentType,
-          headers: {'Referer': u},
+          headers: {
+            'Referer': '$u/', // 🌟 修复 4：登录阶段的 Referer 尾部追加斜杠
+            'Origin': u,       // 🌟 修复 5：登录阶段加入 Origin
+          },
           followRedirects: false,
           validateStatus: (status) => true,
         ),
       );
 
+      debugPrint("ApiService qB 登录响应状态: ${r.statusCode}, Headers: ${r.headers}");
+
       final cookies = r.headers['set-cookie'];
       final prefs = await SharedPreferences.getInstance();
       if (cookies != null) {
         for (final c in cookies) {
-          if (c.startsWith('SID=')) {
-            await prefs.setString('cookie', c.split(';').first);
+          // 🌟 修复 6：改用 contains 模糊匹配 SID，自动适应前导空格，并用 trim() 净化 Cookie
+          if (c.contains('SID=')) {
+            final cleanCookie = c.split(';').first.trim();
+            await prefs.setString('cookie', cleanCookie);
+            debugPrint("✅ ApiService 成功提取并保存 SID Cookie: $cleanCookie");
             return true;
           }
         }
@@ -91,10 +109,11 @@ class ApiService {
 
       if (overrideConfig == null) {
         final oldCookie = prefs.getString('cookie');
-        if (oldCookie != null && oldCookie.startsWith('SID=')) return true;
+        if (oldCookie != null && oldCookie.contains('SID=')) return true;
       }
       return false;
     } catch (e, stack) {
+      debugPrint("🔥🔥🔥 ApiService qB 登录爆红: $e");
       await Sentry.captureException(e, stackTrace: stack);
       return false;
     }
@@ -964,11 +983,8 @@ class ApiService {
     return false;
   }
 
-  // 🌟 修正：将虚假的 API 改为指向咱们真实存在的 9000 端口 Python 服务！
   static Future<bool> requestTranslation(String torrentName) async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // 如果没有配置，自动兜底到你真实的 VPS 9000 端口
     final baseUrl = prefs.getString('api_base_url') ?? 'http://152.53.131.108:9000';
 
     try {
@@ -992,19 +1008,16 @@ class ApiService {
 // 🌟 全新的专属 MeTube API 服务
 // ==========================================
 class MyTubeService {
-  // 你的专属 MeTube 服务器地址
   static const String baseUrl = "http://152.53.131.108:5551";
   static final Dio _dio = Dio();
 
-  /// 提交下载任务到 MeTube
-  /// 返回 null 表示成功，返回 String 表示错误信息
   static Future<String?> addDownloadTask(String url) async {
     try {
       final response = await _dio.post(
         "$baseUrl/add",
         data: {
           "url": url,
-          "quality": "best" // 默认最高画质
+          "quality": "best"
         },
         options: Options(
           contentType: Headers.jsonContentType,
@@ -1014,12 +1027,9 @@ class MyTubeService {
       );
 
       if (response.statusCode == 200) {
-        // Dio 自动将响应体解析为 Map
         final data = response.data is String ? jsonDecode(response.data) : response.data;
-
-        // MeTube 添加成功通常返回 {"status": "ok"}
         if (data != null && data['status'] == 'ok') {
-          return null; // 成功
+          return null;
         } else {
           return data['error']?.toString() ?? "MeTube 返回未知错误";
         }
@@ -1032,10 +1042,8 @@ class MyTubeService {
     }
   }
 
-  /// 🌟 新增：获取 MeTube 的下载记录
   static Future<List<dynamic>> getTasks() async {
     try {
-      // 请求 MeTube 的历史记录接口
       final response = await _dio.get(
         "$baseUrl/api/v1/history",
         options: Options(
@@ -1046,16 +1054,14 @@ class MyTubeService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data is String ? jsonDecode(response.data) : response.data;
-
-        // 转换数据格式，以便完美兼容你现有的 qBittorrent 列表 UI
         return data.map((item) => {
-          'hash': item['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(), // 用 ID 充当 Hash
+          'hash': item['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
           'name': item['title'] ?? 'YouTube 视频',
-          'progress': 1.0, // 历史记录里的都是 100% 完成的
+          'progress': 1.0,
           'state': 'completed',
           'size': item['file_size'] ?? 0,
-          'is_yt': true, // 核心标记：告诉 UI 这是 YouTube 任务
-          'poster': '', // MeTube 历史记录不带封面，直接留空
+          'is_yt': true,
+          'poster': '',
         }).toList();
       }
     } catch (e) {
